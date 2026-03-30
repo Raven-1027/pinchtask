@@ -5,18 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 任务生命周期状态枚举。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TaskStatus {
-    /// 已定义但尚未开始。
-    Todo,
-    /// 正在进行中。
-    InProgress,
-    /// 已完成。
-    Done,
-}
-
 /// 任务清单中的单个条目。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChecklistItem {

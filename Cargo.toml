@@ -1,12 +1,14 @@
 [package]
 name = "mcp-pinchtask"
 version = "0.1.0"
-description = "A Rust-based MCP task manager inspired by mcp-shrimp-task-manager"
+description = "A task management server based on Model Context Protocol (MCP), providing structured task management for AI agents"
 authors = ["Raven"]
 edition = "2021"
 license = "MIT"
-keywords = ["mcp", "task-manager", "agent", "workflow"]
-categories = ["command-line-utilities"]
+keywords = ["mcp", "task-manager", "agent", "workflow", "ai"]
+categories = ["command-line-utilities", "development-tools"]
+repository = "https://github.com/ravenxrq/mcp-pinchtask"
+readme = "README.md"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

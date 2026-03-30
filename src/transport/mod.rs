@@ -44,10 +44,7 @@ impl StdioTransport {
                 // 首字符为 '{'，按换行分隔 JSON 格式
                 b'{' => {
                     let mut rest = String::from("{");
-                    let bytes_read = handle.read_line(&mut rest).context("读取行失败")?;
-                    if bytes_read == 0 && !rest.ends_with('\n') {
-                        // 可能是最后一行没有换行符
-                    }
+                    handle.read_line(&mut rest).context("读取行失败")?;
                     rest.trim_end().to_owned()
                 }
                 // 首字符为其他值（字母/数字），按 Content-Length 头格式解析
@@ -90,7 +87,7 @@ impl StdioTransport {
     /// 将 JSON-RPC 响应写入 stdout（使用换行分隔格式）。
     pub async fn write_response(&self, response: &JsonRpcResponse) -> Result<()> {
         let json = serde_json::to_string(response).context("序列化 JSON-RPC 响应失败")?;
-        self.write_line(&json).await
+        self.write_line(json).await
     }
 
     /// 将 JSON-RPC 通知写入 stdout。
@@ -102,12 +99,11 @@ impl StdioTransport {
         });
         let json =
             serde_json::to_string(&notification).context("序列化 JSON-RPC 通知失败")?;
-        self.write_line(&json).await
+        self.write_line(json).await
     }
 
     /// 写入一行到 stdout（带换行符）。
-    async fn write_line(&self, line: &str) -> Result<()> {
-        let line = line.to_owned();
+    async fn write_line(&self, line: String) -> Result<()> {
         tokio::task::spawn_blocking(move || {
             let mut stdout = std::io::stdout().lock();
             writeln!(stdout, "{line}").context("写入 stdout 失败")?;

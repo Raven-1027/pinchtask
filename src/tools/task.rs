@@ -625,7 +625,7 @@ mod tests {
 
         assert_eq!(task.task_description, "测试任务");
         assert_eq!(task.context_for_all_tasks, Some("共享上下文".to_owned()));
-        assert!(task.id.len() > 0);
+        assert!(!task.id.is_empty());
     }
 
     #[test]

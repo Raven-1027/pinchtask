@@ -438,7 +438,7 @@ impl McpServer {
                 }
             };
 
-            let response = self.handle_request(request).await;
+            let response = self.handle_request(request);
             if let Err(e) = self.transport.write_response(&response).await {
                 tracing::error!("Failed to write response: {e}");
                 break;
@@ -449,7 +449,7 @@ impl McpServer {
     }
 
     /// 分发请求到对应的处理器。
-    async fn handle_request(&mut self, request: JsonRpcRequest) -> JsonRpcResponse {
+    fn handle_request(&mut self, request: JsonRpcRequest) -> JsonRpcResponse {
         let id = request.id.clone();
         match request.method.as_str() {
             "initialize" => self.handle_initialize(id.clone(), request.params),
@@ -534,7 +534,7 @@ impl McpServer {
     }
 }
 
-/// 启动 MCP 服务器的入口函数。
+/// 启动 MCP 服务器的入口函数（使用默认数据目录）。
 pub async fn run() -> Result<()> {
     let store = TaskStore::new(None)?;
     let server = McpServer::new(store);
