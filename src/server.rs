@@ -449,7 +449,7 @@ impl McpServer {
     }
 
     /// 分发请求到对应的处理器。
-    fn handle_request(&mut self, request: JsonRpcRequest) -> JsonRpcResponse {
+    pub fn handle_request(&mut self, request: JsonRpcRequest) -> JsonRpcResponse {
         let id = request.id.clone();
         match request.method.as_str() {
             "initialize" => self.handle_initialize(id.clone(), request.params),
