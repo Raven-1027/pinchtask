@@ -326,9 +326,34 @@ pub fn initialize_task_handler(
     let task_description = require_str!(args, "task_description");
     let context = optional_str!(args, "context_for_all_tasks");
 
+    // 手动解析 initial_checklist，为缺少 id/done 的条目生成默认值
     let initial_checklist: Vec<ChecklistItem> = args
         .get("initial_checklist")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter().filter_map(|item| {
+                let task = item.get("task")?.as_str()?;
+                let detailed_description = item
+                    .get("detailed_description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                Some(ChecklistItem {
+                    id: item.get("id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned())
+                        .unwrap_or_else(|| Uuid::new_v4().to_string()),
+                    task: task.to_owned(),
+                    detailed_description: detailed_description.to_owned(),
+                    context_and_plan: item
+                        .get("context_and_plan")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned()),
+                    done: item.get("done")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                })
+            }).collect()
+        })
         .unwrap_or_default();
 
     let notes: Vec<String> = args

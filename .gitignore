@@ -1,10 +1,24 @@
-target/
+### Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+### IDE
+.idea/
+.vscode/
 *.swp
 *.swo
 *~
+*.sublime-*
+
+### OS
 .DS_Store
-_*.sh
-_*.txt
-check.sh
-check_now.sh
-commit_step1.sh.tmp
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### Temp / Misc
+*.tmp
+*.bak
+*.log

@@ -66,8 +66,8 @@ impl StdioTransport {
                         })?;
 
                     // 读取并跳过空行（\r\n 分隔符）
-                    let mut sep = [0u8; 2];
-                    handle.read_exact(&mut sep).context("读取分隔符失败")?;
+                    let mut _sep = [0u8; 2];
+                    handle.read_exact(&mut _sep).context("读取分隔符失败")?;
 
                     // 读取指定长度的 JSON 体
                     let mut buf = vec![0u8; content_length];
@@ -103,6 +103,9 @@ impl StdioTransport {
     }
 
     /// 写入一行到 stdout（带换行符）。
+    ///
+    /// 接收 owned String，直接 move 进 spawn_blocking 闭包，
+    /// 避免 'static 生命周期约束问题。
     async fn write_line(&self, line: String) -> Result<()> {
         tokio::task::spawn_blocking(move || {
             let mut stdout = std::io::stdout().lock();
