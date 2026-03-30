@@ -2,11 +2,6 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-mod lib;
-mod models;
-mod server;
-mod tools;
-
 /// mcp-pinchtask: A Rust-based MCP task manager
 #[derive(Parser, Debug)]
 #[command(name = "mcp-pinchtask", version, about)]
@@ -31,7 +26,7 @@ async fn main() -> Result<()> {
     tracing::info!("mcp-pinchtask starting");
 
     // Start the MCP server
-    server::run().await?;
+    mcp_pinchtask::server::run().await?;
 
     tracing::info!("mcp-pinchtask shutting down");
     Ok(())
