@@ -107,6 +107,7 @@ impl StdioTransport {
 
     /// 写入一行到 stdout（带换行符）。
     async fn write_line(&self, line: &str) -> Result<()> {
+        let line = line.to_owned();
         tokio::task::spawn_blocking(move || {
             let mut stdout = std::io::stdout().lock();
             writeln!(stdout, "{line}").context("写入 stdout 失败")?;

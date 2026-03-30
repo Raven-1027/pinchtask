@@ -234,13 +234,6 @@ pub fn reorder_checklist_item(
         )));
     }
     let item = task.checklist.remove(from_index);
-    // 移除后列表缩短了，需要调整插入位置
-    let insert_at = if to_index > from_index {
-        to_index // remove 已经让后面的元素前移了 1 位
-    } else {
-        to_index
-    };
-    // 但如果 to_index 原本就是基于移除前的索引计算的，需要重新校准
     // 标准做法：先 remove，然后 min(to_index, len) 作为插入点
     let insert_at = to_index.min(task.checklist.len());
     task.checklist.insert(insert_at, item);
