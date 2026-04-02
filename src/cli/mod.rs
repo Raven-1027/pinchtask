@@ -2,6 +2,10 @@
 //!
 //! 定义顶层命令行参数解析与子命令分发逻辑。
 
+use clap::CommandFactory;
+use clap_complete::{generate, shells::Shell};
+use std::io;
+
 pub mod server;
 pub mod task;
 pub mod checklist;
@@ -59,6 +63,11 @@ enum Commands {
     Resource(resource::ResourceCmd),
     /// 元数据管理
     Metadata(metadata::MetadataCmd),
+    /// 生成 shell 补全脚本
+    Completion {
+        /// 目标 shell (bash, zsh, fish, powershell, elvish)
+        shell: Shell,
+    },
 }
 
 /// 解析日志级别。
@@ -120,6 +129,11 @@ pub async fn run() -> Result<()> {
         Commands::Metadata(cmd) => {
             let store = TaskStore::new(data_dir)?;
             metadata::run(cmd, &store, json_output).await
+        }
+        Commands::Completion { shell } => {
+            let mut cli = Cli::command();
+            generate(shell, &mut cli, "mcp-pinchtask", &mut io::stdout());
+            Ok(())
         }
     }
 }

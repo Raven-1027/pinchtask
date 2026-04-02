@@ -48,7 +48,7 @@ pub enum ChecklistAction {
         #[arg(short, long)]
         plan: Option<Option<String>>,
         /// 完成状态
-        #[arg(short, long)]
+        #[arg(short = 'D', long)]
         done: Option<bool>,
     },
     /// 标记完成
