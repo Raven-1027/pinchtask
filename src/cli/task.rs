@@ -1,176 +1,245 @@
-//! 任务管理子命令。
+//! 任务实体操作：new / ls / show / edit / rm。
 
 use anyhow::Result;
-use clap::{Args, Subcommand};
-use serde::Serialize;
+use clap::Subcommand;
 
-use crate::models::task::Task;
 use crate::store::TaskStore;
 use crate::tools::task as task_tools;
 
 use super::output;
+use super::resolve::resolve_task_id;
 
-/// 任务管理命令。
-#[derive(Args, Debug)]
-pub struct TaskCmd {
-    #[command(subcommand)]
-    pub action: TaskAction,
-}
+// ---------------------------------------------------------------------------
+// 命令定义
+// ---------------------------------------------------------------------------
 
+/// 任务实体相关子命令。
 #[derive(Subcommand, Debug)]
-pub enum TaskAction {
+pub enum TaskCommand {
     /// 创建新任务
-    Create {
+    New {
         /// 任务描述
-        #[arg(short, long)]
         description: String,
         /// 共享上下文
         #[arg(short, long)]
         context: Option<String>,
     },
-    /// 列出所有任务
-    List {
-        /// 按状态过滤 (all, active, done)
-        #[arg(short, long, default_value = "all")]
-        status: String,
-        /// 限制输出数量
+    /// 列出任务
+    Ls {
+        /// 显示全部（active + done）
+        #[arg(short, long, conflicts_with = "done")]
+        all: bool,
+        /// 只显示已完成任务
+        #[arg(short, long, conflicts_with = "all")]
+        done: bool,
+        /// 详细模式（显示更多列）
         #[arg(short, long)]
-        limit: Option<usize>,
+        long: bool,
+        /// 限制显示数量
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+        /// 排序字段: time / priority / progress
+        #[arg(long, default_value = "time")]
+        sort: String,
     },
     /// 查看任务详情
     Show {
-        /// 任务 ID
+        /// 任务 ID（支持短前缀）
         id: String,
     },
-    /// 删除任务
-    Delete {
-        /// 任务 ID
-        id: String,
-    },
-    /// 更新任务描述
-    Update {
-        /// 任务 ID
+    /// 编辑任务描述或上下文
+    Edit {
+        /// 任务 ID（支持短前缀）
         id: String,
         /// 新的任务描述
         #[arg(short, long)]
-        description: String,
+        description: Option<String>,
+        /// 新的共享上下文
+        #[arg(short, long)]
+        context: Option<String>,
     },
-    /// 更新共享上下文
-    Context {
-        /// 任务 ID
-        id: String,
-        /// 新的上下文
-        context: String,
-    },
-    /// 获取清单完成进度摘要
-    Summary {
-        /// 任务 ID
+    /// 删除任务
+    Rm {
+        /// 任务 ID（支持短前缀）
         id: String,
     },
 }
 
-/// 轻量级列表条目（用于 JSON 输出）。
-#[derive(Serialize)]
-struct TaskListItem {
-    id: String,
-    task_description: String,
-    progress: String,
-    created_at: String,
-}
+// ---------------------------------------------------------------------------
+// 命令处理
+// ---------------------------------------------------------------------------
 
-pub async fn run(cmd: TaskCmd, store: &TaskStore, json: bool) -> Result<()> {
-    match cmd.action {
-        TaskAction::Create { description, context } => {
-            let task = task_tools::initialize_task(
-                store,
-                &description,
-                context.as_deref(),
-                vec![],
-                vec![],
-                vec![],
-                None,
-            )?;
-            output_result(&task, json);
-        }
-        TaskAction::List { status, limit } => {
-            let tasks = store.list_tasks()?;
-            let filtered: Vec<&Task> = match status.as_str() {
-                "active" => tasks
-                    .iter()
-                    .filter(|t| t.checklist.iter().any(|i| !i.done))
-                    .collect(),
-                "done" => tasks
-                    .iter()
-                    .filter(|t| !t.checklist.is_empty() && t.checklist.iter().all(|i| i.done))
-                    .collect(),
-                _ => tasks.iter().collect(),
-            };
-
-            let limited: Vec<&Task> = match limit {
-                Some(n) => filtered.into_iter().take(n).collect(),
-                None => filtered,
-            };
-
-            if json {
-                let items: Vec<TaskListItem> = limited
-                    .iter()
-                    .map(|t| {
-                        let total = t.checklist.len();
-                        let done = t.checklist.iter().filter(|i| i.done).count();
-                        TaskListItem {
-                            id: t.id.clone(),
-                            task_description: t.task_description.clone(),
-                            progress: format!("{done}/{total}"),
-                            created_at: t.created_at.clone(),
-                        }
-                    })
-                    .collect();
-                let json_str = serde_json::to_string_pretty(&items)?;
-                println!("{json_str}");
-            } else {
-                if limited.is_empty() {
-                    println!("当前没有任何任务");
-                } else {
-                    for task in limited {
-                        println!("{}", output::format_task_summary(task));
-                        println!();
-                    }
-                }
-            }
-        }
-        TaskAction::Show { id } => {
-            let task = store.get_task(&id)?;
-            if json {
-                output_result(&task, json);
-            } else {
-                println!("{}", output::format_task_detail(&task));
-            }
-        }
-        TaskAction::Delete { id } => {
-            task_tools::clear_task(store, &id)?;
-            println!("任务 {id} 已删除");
-        }
-        TaskAction::Update { id, description } => {
-            let task = task_tools::update_task_description(store, &id, &description)?;
-            output_result(&task, json);
-        }
-        TaskAction::Context { id, context } => {
-            let task = task_tools::update_context(store, &id, &context)?;
-            output_result(&task, json);
-        }
-        TaskAction::Summary { id } => {
-            let summary = task_tools::get_checklist_summary(store, &id)?;
-            println!("{summary}");
-        }
+/// 执行任务实体命令。
+pub fn run(cmd: &TaskCommand, store: &TaskStore, json: bool) -> Result<()> {
+    match cmd {
+        TaskCommand::New { description, context } => run_new(store, json, description, context),
+        TaskCommand::Ls {
+            all,
+            done,
+            long,
+            limit,
+            sort,
+        } => run_ls(store, json, *all, *done, *long, *limit, sort),
+        TaskCommand::Show { id } => run_show(store, json, id),
+        TaskCommand::Edit {
+            id,
+            description,
+            context,
+        } => run_edit(store, json, id, description.as_deref(), context.as_deref()),
+        TaskCommand::Rm { id } => run_rm(store, json, id),
     }
+}
+
+fn run_new(
+    store: &TaskStore,
+    json: bool,
+    description: &str,
+    context: &Option<String>,
+) -> Result<()> {
+    let task = task_tools::initialize_task(
+        store,
+        description,
+        context.as_deref(),
+        vec![],
+        vec![],
+        vec![],
+        None,
+    )?;
+    output::print(output::Output::Task(&task), json);
     Ok(())
 }
 
-fn output_result(task: &Task, json: bool) {
-    if json {
-        let json_str = serde_json::to_string_pretty(task).unwrap();
-        println!("{json_str}");
+fn run_ls(
+    store: &TaskStore,
+    json: bool,
+    show_all: bool,
+    show_done_only: bool,
+    long: bool,
+    limit: usize,
+    sort: &str,
+) -> Result<()> {
+    let tasks = store.list_tasks()?;
+
+    // 过滤
+    let filtered: Vec<_> = if show_done_only {
+        // -d: 只显示已完成
+        tasks
+            .iter()
+            .filter(|t| {
+                !t.checklist.is_empty() && t.checklist.iter().all(|i| i.done)
+            })
+            .collect()
+    } else if show_all {
+        // -a: 显示全部
+        tasks.iter().collect()
     } else {
-        println!("{}", output::format_task_detail(task));
+        // 默认: 只显示活跃任务（有未完成清单项，或清单为空的新任务）
+        tasks
+            .iter()
+            .filter(|t| t.checklist.is_empty() || t.checklist.iter().any(|i| !i.done))
+            .collect()
+    };
+
+    // 排序
+    let mut sorted = filtered;
+    match sort {
+        "priority" => {
+            sorted.sort_by(|a, b| {
+                let pa = a.metadata.as_ref().and_then(|m| m.priority.as_deref()).unwrap_or("medium");
+                let pb = b.metadata.as_ref().and_then(|m| m.priority.as_deref()).unwrap_or("medium");
+                priority_order(pa).cmp(&priority_order(pb))
+            });
+        }
+        "progress" => {
+            sorted.sort_by(|a, b| {
+                let ra = progress_ratio(a);
+                let rb = progress_ratio(b);
+                ra.cmp(&rb)
+            });
+        }
+        // "time" 或默认: 按创建时间排序（store 已按创建时间排序）
+        _ => {}
     }
+
+    // 限制数量
+    let limited: Vec<_> = sorted.into_iter().take(limit).collect();
+
+    // 构建列表条目
+    let entries: Vec<output::TaskListEntry> =
+        limited.iter().map(|t| output::task_to_list_entry(t)).collect();
+
+    output::print(output::Output::TaskList { tasks: entries, long }, json);
+    Ok(())
+}
+
+fn run_show(store: &TaskStore, json: bool, id: &str) -> Result<()> {
+    let tasks = store.list_tasks()?;
+    let full_id = resolve_task_id(id, &tasks)?;
+    let task = store.get_task(&full_id)?;
+    output::print(output::Output::Task(&task), json);
+    Ok(())
+}
+
+fn run_edit(
+    store: &TaskStore,
+    json: bool,
+    id: &str,
+    description: Option<&str>,
+    context: Option<&str>,
+) -> Result<()> {
+    let tasks = store.list_tasks()?;
+    let full_id = resolve_task_id(id, &tasks)?;
+
+    // 至少需要修改一个字段
+    if description.is_none() && context.is_none() {
+        anyhow::bail!("至少需要指定 --description 或 --context 之一");
+    }
+
+    let mut task = store.get_task(&full_id)?;
+
+    if let Some(desc) = description {
+        task = task_tools::update_task_description(store, &full_id, desc)?;
+    }
+    if let Some(ctx) = context {
+        task = task_tools::update_context(store, &full_id, ctx)?;
+    }
+
+    output::print(output::Output::Task(&task), json);
+    Ok(())
+}
+
+fn run_rm(store: &TaskStore, json: bool, id: &str) -> Result<()> {
+    let tasks = store.list_tasks()?;
+    let full_id = resolve_task_id(id, &tasks)?;
+    task_tools::clear_task(store, &full_id)?;
+    let short_id = &full_id[..8.min(full_id.len())];
+    output::print(
+        output::Output::Deleted(format!("任务 {short_id} 已删除")),
+        json,
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 辅助函数
+// ---------------------------------------------------------------------------
+
+/// 优先级排序权重（high=0, medium=1, low=2, 其他=3）。
+fn priority_order(p: &str) -> u8 {
+    match p {
+        "high" => 0,
+        "medium" => 1,
+        "low" => 2,
+        _ => 3,
+    }
+}
+
+/// 任务进度比（已完成为 1.0，空清单为 0.0）。
+fn progress_ratio(task: &crate::models::task::Task) -> (usize, usize) {
+    let total = task.checklist.len();
+    if total == 0 {
+        return (0, 1);
+    }
+    let done = task.checklist.iter().filter(|i| i.done).count();
+    (done, total)
 }
