@@ -66,32 +66,32 @@ pub fn print(output: Output, json: bool) {
 }
 
 /// JSON 格式输出。
+///
+/// 所有分支的序列化目标都是 `Serialize` 类型（`Task`、`Vec<TaskListEntry>`、
+/// `serde_json::Value`），它们在序列化阶段不可能失败，因此使用 `expect()` 而非
+/// `unwrap()` 以便在极端情况下给出可诊断的 panic 消息。
 fn print_json(output: &Output) {
-    match output {
+    let json_str = match output {
         Output::Task(task) => {
-            let json_str = serde_json::to_string_pretty(task).unwrap();
-            println!("{json_str}");
+            serde_json::to_string_pretty(task).expect("序列化 Task 不应失败")
         }
         Output::TaskList { tasks, .. } => {
-            let json_str = serde_json::to_string_pretty(tasks).unwrap();
-            println!("{json_str}");
+            serde_json::to_string_pretty(tasks).expect("序列化 TaskList 不应失败")
         }
         Output::ChecklistSummary(s) => {
             let obj = serde_json::json!({ "summary": s });
-            let json_str = serde_json::to_string_pretty(&obj).unwrap();
-            println!("{json_str}");
+            serde_json::to_string_pretty(&obj).expect("序列化 JSON value 不应失败")
         }
         Output::Success(msg) => {
             let obj = serde_json::json!({ "success": true, "message": msg });
-            let json_str = serde_json::to_string_pretty(&obj).unwrap();
-            println!("{json_str}");
+            serde_json::to_string_pretty(&obj).expect("序列化 JSON value 不应失败")
         }
         Output::Deleted(msg) => {
             let obj = serde_json::json!({ "deleted": true, "message": msg });
-            let json_str = serde_json::to_string_pretty(&obj).unwrap();
-            println!("{json_str}");
+            serde_json::to_string_pretty(&obj).expect("序列化 JSON value 不应失败")
         }
-    }
+    };
+    println!("{json_str}");
 }
 
 /// 文本格式输出。

@@ -8,7 +8,7 @@ use anyhow::Result;
 pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
     tracing::info!("mcp-pinchtask server starting");
 
-    let store = crate::store::TaskStore::new(data_dir)?;
+    let store = crate::store::TaskStore::new(data_dir).await?;
     tracing::info!("TaskStore initialized");
 
     let server = crate::server::McpServer::new(store);

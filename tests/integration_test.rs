@@ -17,9 +17,11 @@ use mcp_pinchtask::store::TaskStore;
 /// 创建使用临时目录的 McpServer 实例。
 ///
 /// 返回 (server, _tempdir)。调用者必须保持 `_tempdir` 存活。
-fn test_server() -> (McpServer, TempDir) {
+async fn test_server() -> (McpServer, TempDir) {
     let dir = tempfile::tempdir().expect("创建临时目录失败");
-    let store = TaskStore::new(Some(dir.path().to_path_buf())).expect("创建 TaskStore 失败");
+    let store = TaskStore::new(Some(dir.path().to_path_buf()))
+        .await
+        .expect("创建 TaskStore 失败");
     let server = McpServer::new(store);
     (server, dir)
 }
@@ -48,9 +50,9 @@ fn error_of(resp: &JsonRpcResponse) -> &JsonRpcError {
 // 测试用例
 // ---------------------------------------------------------------------------
 
-#[test]
-fn test_initialize_request_response() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_initialize_request_response() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request(
         "initialize",
@@ -62,7 +64,7 @@ fn test_initialize_request_response() {
         })),
     );
 
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
 
     assert!(resp.error.is_none(), "initialize 不应返回错误");
     let result = result_of(&resp);
@@ -78,18 +80,18 @@ fn test_initialize_request_response() {
     assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
 }
 
-#[test]
-fn test_tools_list_returns_all_16_tools() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_tools_list_returns_all_17_tools() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request("tools/list", 2, None);
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
 
     assert!(resp.error.is_none());
     let result = result_of(&resp);
     let tools = result["tools"].as_array().expect("tools 应为数组");
 
-    assert_eq!(tools.len(), 16, "应注册 16 个工具");
+    assert_eq!(tools.len(), 17, "应注册 17 个工具");
 
     // 验证所有工具都有 name, description, inputSchema
     for tool in tools {
@@ -106,6 +108,7 @@ fn test_tools_list_returns_all_16_tools() {
 
     let expected_tools = [
         "initialize_task",
+        "update_task",
         "update_task_description",
         "update_context",
         "add_checklist_item",
@@ -131,9 +134,9 @@ fn test_tools_list_returns_all_16_tools() {
     }
 }
 
-#[test]
-fn test_tools_call_initialize_task() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_tools_call_initialize_task() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request(
         "tools/call",
@@ -147,7 +150,7 @@ fn test_tools_call_initialize_task() {
         })),
     );
 
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     assert!(resp.error.is_none(), "initialize_task 不应返回错误");
 
     let result = result_of(&resp);
@@ -167,9 +170,9 @@ fn test_tools_call_initialize_task() {
     assert!(!task["id"].as_str().unwrap().is_empty());
 }
 
-#[test]
-fn test_tools_call_list_tasks() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_tools_call_list_tasks() {
+    let (mut server, _dir) = test_server().await;
 
     // 先创建两个任务
     for desc in ["任务A", "任务B"] {
@@ -181,7 +184,7 @@ fn test_tools_call_list_tasks() {
                 "arguments": { "task_description": desc }
             })),
         );
-        let _ = server.handle_request(req);
+        let _ = server.handle_request(req).await;
     }
 
     // 列出任务
@@ -193,7 +196,7 @@ fn test_tools_call_list_tasks() {
             "arguments": {}
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     assert!(resp.error.is_none());
 
     let result = result_of(&resp);
@@ -204,9 +207,9 @@ fn test_tools_call_list_tasks() {
     assert!(text.contains("任务B"), "列表应包含 '任务B'");
 }
 
-#[test]
-fn test_tools_call_add_checklist_item() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_tools_call_add_checklist_item() {
+    let (mut server, _dir) = test_server().await;
 
     // 创建任务
     let req = make_request(
@@ -217,7 +220,7 @@ fn test_tools_call_add_checklist_item() {
             "arguments": { "task_description": "带检查项的任务" }
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     let task: Value = serde_json::from_str(
         resp.result.unwrap()["content"][0]["text"].as_str().unwrap(),
     )
@@ -238,7 +241,7 @@ fn test_tools_call_add_checklist_item() {
             }
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     assert!(resp.error.is_none());
 
     let result = result_of(&resp);
@@ -249,9 +252,9 @@ fn test_tools_call_add_checklist_item() {
     assert_eq!(task["checklist"][0]["done"], false);
 }
 
-#[test]
-fn test_tools_call_mark_task_done_and_summary() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_tools_call_mark_task_done_and_summary() {
+    let (mut server, _dir) = test_server().await;
 
     // 创建带检查项的任务
     let req = make_request(
@@ -268,7 +271,7 @@ fn test_tools_call_mark_task_done_and_summary() {
             }
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     let task: Value = serde_json::from_str(
         resp.result.unwrap()["content"][0]["text"].as_str().unwrap(),
     )
@@ -287,7 +290,7 @@ fn test_tools_call_mark_task_done_and_summary() {
             }
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     assert!(resp.error.is_none());
 
     let result_val = resp.result.unwrap();
@@ -308,7 +311,7 @@ fn test_tools_call_mark_task_done_and_summary() {
             }
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
     assert!(resp.error.is_none());
 
     let result_val = resp.result.unwrap();
@@ -318,23 +321,23 @@ fn test_tools_call_mark_task_done_and_summary() {
     assert!(summary.contains("⬜"), "未完成的条目应显示 ⬜");
 }
 
-#[test]
-fn test_ping_returns_empty_result() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_ping_returns_empty_result() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request("ping", 99, None);
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
 
     assert!(resp.error.is_none());
     assert_eq!(result_of(&resp), &json!({}));
 }
 
-#[test]
-fn test_unknown_method_returns_error() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_unknown_method_returns_error() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request("nonexistent_method", 100, None);
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
 
     assert!(resp.result.is_none(), "未知方法不应返回 result");
     let err = error_of(&resp);
@@ -342,9 +345,9 @@ fn test_unknown_method_returns_error() {
     assert!(err.message.contains("Method not found"));
 }
 
-#[test]
-fn test_unknown_tool_returns_error() {
-    let (mut server, _dir) = test_server();
+#[tokio::test]
+async fn test_unknown_tool_returns_error() {
+    let (mut server, _dir) = test_server().await;
 
     let req = make_request(
         "tools/call",
@@ -354,7 +357,7 @@ fn test_unknown_tool_returns_error() {
             "arguments": {}
         })),
     );
-    let resp = server.handle_request(req);
+    let resp = server.handle_request(req).await;
 
     assert!(resp.result.is_none());
     let err = error_of(&resp);

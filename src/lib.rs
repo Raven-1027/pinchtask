@@ -4,6 +4,7 @@
 //! inspired by mcp-shrimp-task-manager.
 
 pub mod cli;
+pub mod core;
 pub mod models;
 pub mod protocol;
 pub mod server;
