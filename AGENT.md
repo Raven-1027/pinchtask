@@ -1,8 +1,8 @@
-# AGENT.md — mcp-pinchtask 仓库状态
+# AGENT.md — pinchtask 仓库状态
 
 ## 项目概述
 
-**mcp-pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 CLI 本地操作和 MCP 服务器两种使用模式，共享同一套核心业务逻辑与数据存储。
+**pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 CLI 本地操作和 MCP 服务器两种使用模式，共享同一套核心业务逻辑与数据存储。
 
 - **语言**: Rust (Edition 2021)
 - **版本**: 0.1.0
@@ -28,7 +28,7 @@
 ## 项目结构
 
 ```
-mcp-pinchtask/
+pinchtask/
 ├── src/
 │   ├── main.rs              # CLI 入口，退出码处理
 │   ├── lib.rs               # 库入口，模块导出
@@ -148,7 +148,7 @@ Task {
 ## 数据存储
 
 - **格式**: SQLite 数据库文件（tasks.db）
-- **默认路径**: `~/.mcp-pinchtask/tasks.db`
+- **默认路径**: `~/.pinchtask/tasks.db`
 - **可通过**: `-D` 参数或 `PINCHTASK_DATA_DIR` 环境变量配置
 - **Schema**: 混合范式化设计，主表 tasks + checklist_items/notes/resources 独立表，metadata 为 JSON 列
 
@@ -192,7 +192,7 @@ cargo run -- ls
 cargo run -- serve
 
 # 生成补全脚本
-cargo run -- completion bash > /etc/bash_completion.d/mcp-pinchtask
+cargo run -- completion bash > /etc/bash_completion.d/pinchtask
 ```
 
 ## 退出码约定
@@ -210,7 +210,7 @@ cargo run -- completion bash > /etc/bash_completion.d/mcp-pinchtask
 {
   "mcpServers": {
     "pinchtask": {
-      "command": "mcp-pinchtask",
+      "command": "pinchtask",
       "args": ["serve"],
       "env": {
         "PINCHTASK_DATA_DIR": "/path/to/data"

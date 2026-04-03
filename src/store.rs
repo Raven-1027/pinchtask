@@ -1,7 +1,7 @@
 //! SQLite 持久化层。
 //!
 //! `TaskStore` 使用 sqlx + SQLite 存储任务数据，
-//! 默认路径为 `~/.mcp-pinchtask/tasks.db`。
+//! 默认路径为 `~/.pinchtask/tasks.db`。
 
 use std::path::PathBuf;
 
@@ -41,7 +41,7 @@ impl TaskStore {
     /// 若数据目录不存在会自动递归创建，然后初始化 SQLite 数据库并执行迁移。
     ///
     /// # 参数
-    /// - `data_dir`: 数据目录路径，传入 `None` 则使用默认路径 `~/.mcp-pinchtask`。
+    /// - `data_dir`: 数据目录路径，传入 `None` 则使用默认路径 `~/.pinchtask`。
     pub async fn new(data_dir: Option<PathBuf>) -> Result<Self, StoreError> {
         let data_dir = data_dir.unwrap_or_else(default_data_dir);
         std::fs::create_dir_all(&data_dir)?;
@@ -426,9 +426,9 @@ impl From<ResourceRow> for Resource {
 // 路径辅助
 // ---------------------------------------------------------------------------
 
-/// 返回默认数据目录 `~/.mcp-pinchtask`。
+/// 返回默认数据目录 `~/.pinchtask`。
 fn default_data_dir() -> PathBuf {
-    dirs_home_dir().join(".mcp-pinchtask")
+    dirs_home_dir().join(".pinchtask")
 }
 
 /// 获取用户 HOME 目录的跨平台辅助函数。

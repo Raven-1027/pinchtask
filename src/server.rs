@@ -528,7 +528,7 @@ impl ServerHandler for PinchTaskServer {
             "protocolVersion": "2024-11-05",
             "capabilities": capabilities,
             "serverInfo": {
-                "name": "mcp-pinchtask",
+                "name": "pinchtask",
                 "version": env!("CARGO_PKG_VERSION")
             }
         });

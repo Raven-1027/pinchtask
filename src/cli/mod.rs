@@ -21,13 +21,13 @@ pub mod task;
 
 // ── 顶层参数 ───────────────────────────────────────────────────────────────
 
-/// mcp-pinchtask: 基于 MCP 的任务管理工具
+/// pinchtask: 基于 MCP 的任务管理工具
 #[derive(Parser, Debug)]
-#[command(name = "mcp-pinchtask", version, about, subcommand_required = false)]
+#[command(name = "pinchtask", version, about, subcommand_required = false)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
-    /// 数据存储目录路径（默认: ~/.mcp-pinchtask）
+    /// 数据存储目录路径（默认: ~/.pinchtask）
     #[arg(short = 'D', long, global = true, env = "PINCHTASK_DATA_DIR")]
     data_dir: Option<PathBuf>,
     /// 日志级别 (trace, debug, info, warn, error)
@@ -155,7 +155,7 @@ pub async fn run() -> Result<()> {
         Commands::Serve => return server::run(data_dir).await,
         Commands::Completion(args) => {
             let mut cmd = Cli::command();
-            generate(args.shell, &mut cmd, "mcp-pinchtask", &mut io::stdout());
+            generate(args.shell, &mut cmd, "pinchtask", &mut io::stdout());
             return Ok(());
         }
         _ => {}

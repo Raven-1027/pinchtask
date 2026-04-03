@@ -2,11 +2,11 @@
 
 ## 概述
 
-mcp-pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，通过 JSON-RPC 2.0 over Stdio 与客户端通信。
+pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，通过 JSON-RPC 2.0 over Stdio 与客户端通信。
 
 - **协议版本**：`2024-11-05`
 - **传输方式**：Stdio（标准输入/输出）
-- **服务端信息**：`name: "mcp-pinchtask"`, `version: <cargo version>`
+- **服务端信息**：`name: "pinchtask"`, `version: <cargo version>`
 
 ## 生命周期
 
@@ -429,7 +429,7 @@ ID: e5f6g7h8-...
 {
   "mcpServers": {
     "pinchtask": {
-      "command": "/path/to/mcp-pinchtask",
+      "command": "/path/to/pinchtask",
       "args": ["mcp"]
     }
   }
@@ -438,4 +438,4 @@ ID: e5f6g7h8-...
 
 ### 自定义数据目录
 
-通过环境变量设置（如需要指定非默认的存储路径，需修改代码中的 `default_data_dir()`）。默认数据目录为 `~/.mcp-pinchtask/`。
+通过环境变量设置（如需要指定非默认的存储路径，需修改代码中的 `default_data_dir()`）。默认数据目录为 `~/.pinchtask/`。

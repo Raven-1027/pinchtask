@@ -1,6 +1,6 @@
 # CLI 参考文档
 
-`mcp-pinchtask` 命令行工具的完整命令与参数说明。
+`pinchtask` 命令行工具的完整命令与参数说明。
 
 ---
 
@@ -10,7 +10,7 @@
 
 | 选项 | 环境变量 | 说明 |
 |------|----------|------|
-| `-D, --data-dir <DIR>` | `PINCHTASK_DATA_DIR` | 数据存储目录路径，默认 `~/.mcp-pinchtask` |
+| `-D, --data-dir <DIR>` | `PINCHTASK_DATA_DIR` | 数据存储目录路径，默认 `~/.pinchtask` |
 | `--log-level <LEVEL>` | `PINCHTASK_LOG_LEVEL` | 日志级别：`trace`、`debug`、`info`、`warn`、`error` |
 | `-v, --verbose` | — | 详细输出，等价于 `--log-level debug`，与 `-q` 互斥 |
 | `-q, --quiet` | — | 安静模式，等价于 `--log-level error`，与 `-v` 互斥 |
@@ -26,7 +26,7 @@
 
 ```
 # 假设完整 ID 为 550e8400-e29b-41d4-a716-446655440000
-mcp-pinchtask show 550e
+pinchtask show 550e
 ```
 
 ---
@@ -36,7 +36,7 @@ mcp-pinchtask show 550e
 ### `new` — 创建新任务
 
 ```
-mcp-pinchtask new <DESCRIPTION> [-c <CONTEXT>]
+pinchtask new <DESCRIPTION> [-c <CONTEXT>]
 ```
 
 | 参数 | 说明 |
@@ -47,7 +47,7 @@ mcp-pinchtask new <DESCRIPTION> [-c <CONTEXT>]
 **示例：**
 
 ```bash
-mcp-pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
+pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
 ```
 
 ---
@@ -55,7 +55,7 @@ mcp-pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
 ### `ls` — 列出任务
 
 ```
-mcp-pinchtask ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
+pinchtask ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
 ```
 
 | 选项 | 说明 |
@@ -71,7 +71,7 @@ mcp-pinchtask ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
 **示例：**
 
 ```bash
-mcp-pinchtask ls --all --long --limit 20 --sort priority
+pinchtask ls --all --long --limit 20 --sort priority
 ```
 
 ---
@@ -79,7 +79,7 @@ mcp-pinchtask ls --all --long --limit 20 --sort priority
 ### `show` — 查看任务详情
 
 ```
-mcp-pinchtask show <TASK_ID>
+pinchtask show <TASK_ID>
 ```
 
 | 参数 | 说明 |
@@ -91,7 +91,7 @@ mcp-pinchtask show <TASK_ID>
 **示例：**
 
 ```bash
-mcp-pinchtask show 550e
+pinchtask show 550e
 ```
 
 ---
@@ -103,7 +103,7 @@ mcp-pinchtask show 550e
 #### 任务级编辑
 
 ```
-mcp-pinchtask edit <TASK_ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <TAGS>] [--eta <TIME>]
+pinchtask edit <TASK_ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <TAGS>] [--eta <TIME>]
 ```
 
 | 选项 | 说明 |
@@ -120,7 +120,7 @@ mcp-pinchtask edit <TASK_ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <T
 #### 条目级编辑
 
 ```
-mcp-pinchtask edit <TASK_ID> <INDEX> [-t <TITLE>] [-d <TEXT>] [-p <PLAN>] [--done] [--undone]
+pinchtask edit <TASK_ID> <INDEX> [-t <TITLE>] [-d <TEXT>] [-p <PLAN>] [--done] [--undone]
 ```
 
 | 选项 | 说明 |
@@ -139,10 +139,10 @@ mcp-pinchtask edit <TASK_ID> <INDEX> [-t <TITLE>] [-d <TEXT>] [-p <PLAN>] [--don
 
 ```bash
 # 修改任务描述和优先级
-mcp-pinchtask edit 550e -d "更新后的描述" --priority high
+pinchtask edit 550e -d "更新后的描述" --priority high
 
 # 修改第 2 个清单条目的标题并标记完成
-mcp-pinchtask edit 550e 1 -t "新标题" --done
+pinchtask edit 550e 1 -t "新标题" --done
 ```
 
 ---
@@ -152,13 +152,13 @@ mcp-pinchtask edit 550e 1 -t "新标题" --done
 #### 删除任务
 
 ```
-mcp-pinchtask rm <TASK_ID>
+pinchtask rm <TASK_ID>
 ```
 
 #### 删除清单条目
 
 ```
-mcp-pinchtask rm <TASK_ID> <INDEX>
+pinchtask rm <TASK_ID> <INDEX>
 ```
 
 | 参数 | 说明 |
@@ -170,10 +170,10 @@ mcp-pinchtask rm <TASK_ID> <INDEX>
 
 ```bash
 # 删除整个任务
-mcp-pinchtask rm 550e
+pinchtask rm 550e
 
 # 删除任务中的第 1 个清单条目
-mcp-pinchtask rm 550e 0
+pinchtask rm 550e 0
 ```
 
 ---
@@ -181,7 +181,7 @@ mcp-pinchtask rm 550e 0
 ### `add` — 添加清单条目
 
 ```
-mcp-pinchtask add <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
+pinchtask add <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
 ```
 
 | 参数 | 说明 |
@@ -196,7 +196,7 @@ mcp-pinchtask add <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
 **示例：**
 
 ```bash
-mcp-pinchtask add 550e "设计数据库表结构" -d "users 表和 sessions 表" -p "先完成 ER 图"
+pinchtask add 550e "设计数据库表结构" -d "users 表和 sessions 表" -p "先完成 ER 图"
 ```
 
 ---
@@ -204,7 +204,7 @@ mcp-pinchtask add 550e "设计数据库表结构" -d "users 表和 sessions 表"
 ### `check` — 切换清单条目完成状态
 
 ```
-mcp-pinchtask check <TASK_ID> <INDEX>
+pinchtask check <TASK_ID> <INDEX>
 ```
 
 | 参数 | 说明 |
@@ -218,10 +218,10 @@ mcp-pinchtask check <TASK_ID> <INDEX>
 
 ```bash
 # 将第 1 个条目标记为已完成
-mcp-pinchtask check 550e 0
+pinchtask check 550e 0
 
 # 再次执行将标记回未完成
-mcp-pinchtask check 550e 0
+pinchtask check 550e 0
 ```
 
 ---
@@ -229,7 +229,7 @@ mcp-pinchtask check 550e 0
 ### `mv` — 移动清单条目顺序
 
 ```
-mcp-pinchtask mv <TASK_ID> <FROM> <TO>
+pinchtask mv <TASK_ID> <FROM> <TO>
 ```
 
 | 参数 | 说明 |
@@ -244,7 +244,7 @@ mcp-pinchtask mv <TASK_ID> <FROM> <TO>
 
 ```bash
 # 将第 3 个条目移到第 1 个位置
-mcp-pinchtask mv 550e 2 0
+pinchtask mv 550e 2 0
 ```
 
 ---
@@ -252,7 +252,7 @@ mcp-pinchtask mv 550e 2 0
 ### `summary` — 查看清单进度摘要
 
 ```
-mcp-pinchtask summary <TASK_ID>
+pinchtask summary <TASK_ID>
 ```
 
 | 参数 | 说明 |
@@ -264,7 +264,7 @@ mcp-pinchtask summary <TASK_ID>
 **示例：**
 
 ```bash
-mcp-pinchtask summary 550e
+pinchtask summary 550e
 ```
 
 ---
@@ -272,7 +272,7 @@ mcp-pinchtask summary 550e
 ### `note` — 添加笔记
 
 ```
-mcp-pinchtask note <TASK_ID> <CONTENT>
+pinchtask note <TASK_ID> <CONTENT>
 ```
 
 | 参数 | 说明 |
@@ -285,7 +285,7 @@ mcp-pinchtask note <TASK_ID> <CONTENT>
 **示例：**
 
 ```bash
-mcp-pinchtask note 550e "发现 JWT 库版本与项目不兼容，需要升级"
+pinchtask note 550e "发现 JWT 库版本与项目不兼容，需要升级"
 ```
 
 ---
@@ -293,7 +293,7 @@ mcp-pinchtask note 550e "发现 JWT 库版本与项目不兼容，需要升级"
 ### `tag` — 设置标签和元数据
 
 ```
-mcp-pinchtask tag <TASK_ID> [TAGS] [--priority <P>] [--eta <TIME>]
+pinchtask tag <TASK_ID> [TAGS] [--priority <P>] [--eta <TIME>]
 ```
 
 | 参数 | 说明 |
@@ -309,10 +309,10 @@ mcp-pinchtask tag <TASK_ID> [TAGS] [--priority <P>] [--eta <TIME>]
 
 ```bash
 # 设置标签和优先级
-mcp-pinchtask tag 550e "bug,urgent" --priority high
+pinchtask tag 550e "bug,urgent" --priority high
 
 # 仅更新预计完成时间
-mcp-pinchtask tag 550e --eta "2025-01-15T18:00:00"
+pinchtask tag 550e --eta "2025-01-15T18:00:00"
 ```
 
 ---
@@ -320,7 +320,7 @@ mcp-pinchtask tag 550e --eta "2025-01-15T18:00:00"
 ### `link` — 添加资源引用
 
 ```
-mcp-pinchtask link <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
+pinchtask link <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
 ```
 
 | 参数 | 说明 |
@@ -333,7 +333,7 @@ mcp-pinchtask link <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
 **示例：**
 
 ```bash
-mcp-pinchtask link 550e --name "API 文档" --url "https://example.com/api" -d "REST API 参考文档"
+pinchtask link 550e --name "API 文档" --url "https://example.com/api" -d "REST API 参考文档"
 ```
 
 ---
@@ -341,10 +341,10 @@ mcp-pinchtask link 550e --name "API 文档" --url "https://example.com/api" -d "
 ### `serve` — 启动 MCP 服务器
 
 ```
-mcp-pinchtask serve
+pinchtask serve
 ```
 
-启动基于 stdio 传输的 MCP 服务器，供 AI 客户端连接。不带子命令运行 `mcp-pinchtask` 时也会自动进入此模式。
+启动基于 stdio 传输的 MCP 服务器，供 AI 客户端连接。不带子命令运行 `pinchtask` 时也会自动进入此模式。
 
 服务器支持的环境变量：
 
@@ -357,7 +357,7 @@ mcp-pinchtask serve
 ### `completion` — 生成 Shell 补全脚本
 
 ```
-mcp-pinchtask completion <SHELL>
+pinchtask completion <SHELL>
 ```
 
 | 参数 | 说明 |
@@ -370,13 +370,13 @@ mcp-pinchtask completion <SHELL>
 
 ```bash
 # Bash
-mcp-pinchtask completion bash > /etc/bash_completion.d/mcp-pinchtask
+pinchtask completion bash > /etc/bash_completion.d/pinchtask
 
 # Zsh
-mcp-pinchtask completion zsh > ~/.zfunc/_mcp-pinchtask
+pinchtask completion zsh > ~/.zfunc/_pinchtask
 
 # Fish
-mcp-pinchtask completion fish > ~/.config/fish/completions/mcp-pinchtask.fish
+pinchtask completion fish > ~/.config/fish/completions/pinchtask.fish
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 ## 概述
 
-mcp-pinchtask 是一个基于 MCP (Model Context Protocol) 的任务管理工具，同时提供 CLI 本地操作与 MCP 服务器模式。项目使用 Rust 编写，通过 SQLite + sqlx 实现异步持久化。
+pinchtask 是一个基于 MCP (Model Context Protocol) 的任务管理工具，同时提供 CLI 本地操作与 MCP 服务器模式。项目使用 Rust 编写，通过 SQLite + sqlx 实现异步持久化。
 
 ## 分层设计
 
@@ -84,7 +84,7 @@ fn xxx(store: &TaskStore, ...) -> Result<Task|String|(), StoreError>
 
 `TaskStore` 基于 SQLite 实现异步持久化，使用 sqlx 作为数据库驱动：
 
-- **默认路径**：`~/.mcp-pinchtask/tasks.db`
+- **默认路径**：`~/.pinchtask/tasks.db`
 - **Schema**：采用混合范式化设计，主表 `tasks` + 关联表 `checklist_items`/`notes`/`resources`，`metadata` 为 JSON 列
 - **迁移**：启动时自动执行 `migrations/` 目录下的 SQL 迁移脚本
 - **级联删除**：删除任务时自动清理关联的清单条目、笔记和资源

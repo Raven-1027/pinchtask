@@ -7,7 +7,7 @@ use rmcp::ServiceExt;
 
 /// 启动 MCP 服务器。
 pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
-    tracing::info!("mcp-pinchtask server starting");
+    tracing::info!("pinchtask server starting");
 
     let store = crate::store::TaskStore::new(data_dir).await?;
     tracing::info!("TaskStore initialized");
@@ -37,6 +37,6 @@ pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
         }
     }
 
-    tracing::info!("mcp-pinchtask server shutting down");
+    tracing::info!("pinchtask server shutting down");
     Ok(())
 }

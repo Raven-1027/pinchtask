@@ -1,4 +1,4 @@
-# mcp-pinchtask
+# pinchtask
 
 基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。
 
@@ -21,16 +21,16 @@
 
 ```bash
 # 需要 Rust 1.70+ 和 Cargo
-git clone https://github.com/ravenxrq/mcp-pinchtask.git
-cd mcp-pinchtask
+git clone https://github.com/ravenxrq/pinchtask.git
+cd pinchtask
 cargo build --release
-# 二进制文件位于 target/release/mcp-pinchtask
+# 二进制文件位于 target/release/pinchtask
 ```
 
 ### 使用 Cargo 安装
 
 ```bash
-cargo install --git https://github.com/ravenxrq/mcp-pinchtask
+cargo install --git https://github.com/ravenxrq/pinchtask
 ```
 
 ## 快速开始
@@ -39,41 +39,41 @@ cargo install --git https://github.com/ravenxrq/mcp-pinchtask
 
 ```bash
 # 创建任务
-mcp-pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
+pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
 
 # 查看任务列表
-mcp-pinchtask ls
+pinchtask ls
 
 # 添加清单条目
-mcp-pinchtask add <TASK_ID> "设计数据库表结构" -d "users 表和 sessions 表"
+pinchtask add <TASK_ID> "设计数据库表结构" -d "users 表和 sessions 表"
 
 # 标记条目完成
-mcp-pinchtask check <TASK_ID> 0
+pinchtask check <TASK_ID> 0
 
 # 查看进度摘要
-mcp-pinchtask summary <TASK_ID>
+pinchtask summary <TASK_ID>
 
 # 查看任务详情
-mcp-pinchtask show <TASK_ID>
+pinchtask show <TASK_ID>
 ```
 
 ### 启动 MCP 服务器
 
 ```bash
 # 直接运行（无子命令时自动进入服务器模式）
-mcp-pinchtask
+pinchtask
 
 # 或显式指定
-mcp-pinchtask serve
+pinchtask serve
 ```
 
 ## CLI 用法
 
 ```
-mcp-pinchtask [OPTIONS] [COMMAND]
+pinchtask [OPTIONS] [COMMAND]
 
 全局选项:
-  -D, --data-dir <DIR>      数据存储目录（默认: ~/.mcp-pinchtask）
+  -D, --data-dir <DIR>      数据存储目录（默认: ~/.pinchtask）
       --log-level <LEVEL>   日志级别 (trace, debug, info, warn, error)
   -v, --verbose             详细输出（等价于 --log-level debug）
   -q, --quiet               安静模式（等价于 --log-level error）
@@ -106,7 +106,7 @@ mcp-pinchtask [OPTIONS] [COMMAND]
 {
   "mcpServers": {
     "pinchtask": {
-      "command": "mcp-pinchtask",
+      "command": "pinchtask",
       "args": ["serve"],
       "env": {
         "PINCHTASK_DATA_DIR": "/path/to/data"
@@ -116,13 +116,13 @@ mcp-pinchtask [OPTIONS] [COMMAND]
 }
 ```
 
-或直接使用 `mcp-pinchtask`（无子命令时默认启动服务器模式）：
+或直接使用 `pinchtask`（无子命令时默认启动服务器模式）：
 
 ```json
 {
   "mcpServers": {
     "pinchtask": {
-      "command": "mcp-pinchtask"
+      "command": "pinchtask"
     }
   }
 }
@@ -140,7 +140,7 @@ mcp-pinchtask [OPTIONS] [COMMAND]
 任务数据存储在 SQLite 数据库文件中：
 
 ```
-~/.mcp-pinchtask/
+~/.pinchtask/
 └── tasks.db
 ```
 

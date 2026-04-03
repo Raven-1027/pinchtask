@@ -1,4 +1,4 @@
--- mcp-pinchtask 初始数据库 Schema
+-- pinchtask 初始数据库 Schema
 -- 采用混合范式化设计：主表 + checklist_items/notes/resources 独立表，metadata 为 JSON 列
 
 CREATE TABLE IF NOT EXISTS tasks (

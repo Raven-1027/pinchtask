@@ -1,5 +1,5 @@
 [package]
-name = "mcp-pinchtask"
+name = "pinchtask"
 version = "0.1.0"
 description = "A task management server based on Model Context Protocol (MCP), providing structured task management for AI agents"
 authors = ["Raven"]
@@ -7,7 +7,7 @@ edition = "2021"
 license = "MIT"
 keywords = ["mcp", "task-manager", "agent", "workflow", "ai"]
 categories = ["command-line-utilities", "development-tools"]
-repository = "https://github.com/ravenxrq/mcp-pinchtask"
+repository = "https://github.com/ravenxrq/pinchtask"
 readme = "README.md"
 
 [dependencies]

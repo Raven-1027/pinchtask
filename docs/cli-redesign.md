@@ -25,7 +25,7 @@
 ## 3. 完整命令树
 
 ```
-mcp-pinchtask
+pinchtask
 │
 ├── 任务实体 ──────────────────────────────────────
 │   new "描述" [-c "上下文"]                  创建任务
@@ -74,21 +74,21 @@ mcp-pinchtask
 
 **默认模式（简洁）**
 ```
-$ mcp-pinchtask ls
+$ pinchtask ls
 8c7b04  API 重构              ██████░░░░ 3/8
 a1f3c9  文档更新              ████░░░░░░ 2/6
 ```
 
 **-l 详细模式**
 ```
-$ mcp-pinchtask ls -l
+$ pinchtask ls -l
 8c7b04  high  API 重构              ██████░░░░ 3/8  security,backend  2025-04-01
 a1f3c9  low   文档更新              ████░░░░░░ 2/6  docs              2025-03-28
 ```
 
 **-a 全部（已完成任务灰色显示）**
 ```
-$ mcp-pinchtask ls -a
+$ pinchtask ls -a
 8c7b04  API 重构              ██████░░░░ 3/8
 a1f3c9  文档更新              ████░░░░░░ 2/6
 f2d8e1  [done] 登录模块开发     ██████████ 5/5
@@ -134,14 +134,14 @@ pub fn resolve_task_id(prefix: &str, tasks: &[Task]) -> Result<String> {
 
 ```bash
 # 列出任务后，用前缀操作
-mcp-pinchtask ls
+pinchtask ls
 #  8c7b04a2  高优先级 - API 重构
 #  a1f3c9d1  后备   - 文档更新
 
-mcp-pinchtask show 8c7b04          # 唯一匹配 8c7b04a2
-mcp-pinchtask add 8c7b04 "标题"
-mcp-pinchtask check 8c7b04 0
-mcp-pinchtask note 8c7b04 "备注"
+pinchtask show 8c7b04          # 唯一匹配 8c7b04a2
+pinchtask add 8c7b04 "标题"
+pinchtask check 8c7b04 0
+pinchtask note 8c7b04 "备注"
 ```
 
 ## 6. 新旧对比
@@ -150,20 +150,20 @@ mcp-pinchtask note 8c7b04 "备注"
 
 ```bash
 # ── 旧设计（6次输入完整 UUID）──
-mcp-pinchtask checklist add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "实现认证模块" -d "JWT方案"
-mcp-pinchtask checklist done 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx 0
-mcp-pinchtask checklist add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "编写单元测试"
-mcp-pinchtask note add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "参考 OWASP 规范"
-mcp-pinchtask metadata update 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx --priority high --tags "security,backend"
-mcp-pinchtask resource add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx --name "JWT文档" --url "https://jwt.io"
+pinchtask checklist add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "实现认证模块" -d "JWT方案"
+pinchtask checklist done 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx 0
+pinchtask checklist add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "编写单元测试"
+pinchtask note add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx "参考 OWASP 规范"
+pinchtask metadata update 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx --priority high --tags "security,backend"
+pinchtask resource add 8c7b04a2-xxxx-xxxx-xxxx-xxxxxxxxxxxx --name "JWT文档" --url "https://jwt.io"
 
 # ── 新设计（6次输入短前缀，状态显式）──
-mcp-pinchtask add 8c7b04 "实现认证模块" -d "JWT方案"
-mcp-pinchtask check 8c7b04 0
-mcp-pinchtask add 8c7b04 "编写单元测试"
-mcp-pinchtask note 8c7b04 "参考 OWASP 规范"
-mcp-pinchtask tag 8c7b04 "security,backend" --priority high
-mcp-pinchtask link 8c7b04 --name "JWT文档" --url "https://jwt.io"
+pinchtask add 8c7b04 "实现认证模块" -d "JWT方案"
+pinchtask check 8c7b04 0
+pinchtask add 8c7b04 "编写单元测试"
+pinchtask note 8c7b04 "参考 OWASP 规范"
+pinchtask tag 8c7b04 "security,backend" --priority high
+pinchtask link 8c7b04 --name "JWT文档" --url "https://jwt.io"
 ```
 
 ### 命令名对照表

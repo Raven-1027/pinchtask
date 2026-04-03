@@ -1,11 +1,11 @@
-//! mcp-pinchtask: MCP 任务管理工具。
+//! pinchtask: MCP 任务管理工具。
 //!
 //! 基于 Model Context Protocol (MCP) 的任务管理工具，
 //! 支持 CLI 本地操作与 MCP 服务器模式。
 
 use std::process::ExitCode;
 
-use mcp_pinchtask::store::StoreError;
+use pinchtask::store::StoreError;
 
 // ---------------------------------------------------------------------------
 // 退出码常量
@@ -24,7 +24,7 @@ const EXIT_ERR_IO: u8 = 3;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    match mcp_pinchtask::cli::run().await {
+    match pinchtask::cli::run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             report_error(&e);
@@ -52,7 +52,7 @@ fn report_error(err: &anyhow::Error) {
             StoreError::Database(db_err) => {
                 eprintln!("错误: 数据库操作失败");
                 eprintln!("  详情: {db_err}");
-                eprintln!("  提示: 可手动检查 ~/.mcp-pinchtask/ 下的数据库文件");
+                eprintln!("  提示: 可手动检查 ~/.pinchtask/ 下的数据库文件");
             }
         }
     } else {

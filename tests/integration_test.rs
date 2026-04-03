@@ -7,9 +7,9 @@ use rmcp::ServerHandler;
 use rmcp::handler::server::wrapper::Parameters;
 use tempfile::TempDir;
 
-use mcp_pinchtask::server::PinchTaskServer;
-use mcp_pinchtask::store::TaskStore;
-use mcp_pinchtask::tools::params::*;
+use pinchtask::server::PinchTaskServer;
+use pinchtask::store::TaskStore;
+use pinchtask::tools::params::*;
 
 // ---------------------------------------------------------------------------
 // 辅助函数
@@ -44,7 +44,7 @@ async fn test_get_info_returns_correct_server_info() {
     let (server, _dir) = test_server().await;
     let info = server.get_info();
 
-    assert_eq!(info.server_info.name, "mcp-pinchtask");
+    assert_eq!(info.server_info.name, "pinchtask");
     assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
 }
 
