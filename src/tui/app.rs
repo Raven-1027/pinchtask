@@ -50,6 +50,10 @@ pub struct App {
     /// 当前查看详情的任务
     current_task: Option<Task>,
 
+    // ── 任务详情状态 ────────────────────────────────────────────────────
+    /// 清单条目焦点索引（TaskDetail 视图使用）
+    detail_item_index: usize,
+
     // ── 生命周期与消息 ──────────────────────────────────────────────────
     /// 退出标志
     should_quit: bool,
@@ -70,6 +74,7 @@ impl App {
             tasks: Vec::new(),
             selected_index: 0,
             current_task: None,
+            detail_item_index: 0,
             should_quit: false,
             message: None,
             error_message: None,
@@ -111,6 +116,11 @@ impl App {
     /// 获取当前查看详情的任务。
     pub fn current_task(&self) -> Option<&Task> {
         self.current_task.as_ref()
+    }
+
+    /// 获取详情视图清单焦点索引。
+    pub fn detail_item_index(&self) -> usize {
+        self.detail_item_index
     }
 
     // ── 视图切换 ──────────────────────────────────────────────────────────
@@ -243,6 +253,10 @@ impl App {
             _ if self.view == View::TaskList => {
                 self.handle_task_list_key(key)?;
             }
+            // ── TaskDetail 视图按键 ───────────────────────────────────
+            _ if self.view == View::TaskDetail => {
+                self.handle_task_detail_key(key)?;
+            }
             // ── 其他视图按键（后续子任务实现）─────────────────────────
             _ => {}
         }
@@ -273,6 +287,7 @@ impl App {
             KeyCode::Enter => {
                 if let Some(task) = self.tasks.get(self.selected_index).cloned() {
                     self.current_task = Some(task);
+                    self.detail_item_index = 0;
                     self.view = View::TaskDetail;
                     self.error_message = None;
                 }
@@ -303,6 +318,79 @@ impl App {
         Ok(())
     }
 
+    /// 任务详情视图的键盘处理。
+    ///
+    /// 支持的操作：
+    /// - ↑/k：清单条目上移焦点
+    /// - ↓/j：清单条目下移焦点
+    /// - Space/x：切换条目完成状态（本地缓存更新）
+    /// - Esc/←/Backspace：返回任务列表
+    /// - d：删除当前焦点条目（消息提示，异步持久化待集成）
+    /// - a：添加清单条目（消息提示，表单待实现）
+    fn handle_task_detail_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> anyhow::Result<()> {
+        use crossterm::event::KeyCode;
+
+        match key.code {
+            // 上下移动清单条目焦点
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.detail_item_index > 0 {
+                    self.detail_item_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(ref task) = self.current_task {
+                    if !task.checklist.is_empty()
+                        && self.detail_item_index < task.checklist.len() - 1
+                    {
+                        self.detail_item_index += 1;
+                    }
+                }
+            }
+            // Space/x 切换条目完成状态
+            KeyCode::Char(' ') | KeyCode::Char('x') => {
+                if let Some(ref mut task) = self.current_task {
+                    if let Some(item) = task.checklist.get_mut(self.detail_item_index) {
+                        item.done = !item.done;
+                        let status = if item.done { "完成" } else { "撤销" };
+                        self.message = Some(format!(
+                            "条目 '{}': {}",
+                            task.checklist[self.detail_item_index].task,
+                            status
+                        ));
+                        // 注意：此处仅更新本地缓存，异步持久化需在主循环集成
+                    }
+                }
+            }
+            // d 删除当前焦点条目
+            KeyCode::Char('d') => {
+                if let Some(ref task) = self.current_task {
+                    if let Some(item) = task.checklist.get(self.detail_item_index) {
+                        self.message = Some(format!(
+                            "删除功能待实现: 选中条目 '{}'（索引 {}）",
+                            item.task, self.detail_item_index
+                        ));
+                    }
+                }
+            }
+            // a 添加清单条目
+            KeyCode::Char('a') => {
+                self.message = Some("添加清单条目表单待实现".to_owned());
+            }
+            // Esc/←/Backspace 返回任务列表
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.view = View::TaskList;
+                self.message = None;
+                self.error_message = None;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     /// 异步操作结果处理。
     fn handle_action(&mut self, action: Action) -> anyhow::Result<()> {
         match action {
@@ -316,6 +404,7 @@ impl App {
             }
             Action::TaskDetailLoaded(task) => {
                 self.current_task = Some(task);
+                self.detail_item_index = 0;
                 self.view = View::TaskDetail;
                 self.error_message = None;
             }

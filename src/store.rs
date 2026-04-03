@@ -35,6 +35,15 @@ pub struct TaskStore {
     pool: sqlx::SqlitePool,
 }
 
+// SqlitePool 内部使用 Arc，克隆开销极低，可安全用于跨 tokio task 共享连接池。
+impl Clone for TaskStore {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+        }
+    }
+}
+
 impl TaskStore {
     /// 创建 TaskStore 实例。
     ///

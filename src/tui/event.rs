@@ -34,6 +34,8 @@ pub enum Action {
     ItemRemoved,
     /// 清单条目已编辑
     ItemEdited,
+    /// 任务已删除（携带被删除任务的 ID）
+    TaskDeleted(String),
     /// 操作出错
     Error(String),
 }

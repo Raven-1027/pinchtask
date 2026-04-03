@@ -3,6 +3,7 @@
 //! 负责将 `App` 状态绘制到终端帧缓冲区。
 //! 每个视图对应一个独立的渲染函数。
 
+mod task_detail;
 mod task_list;
 
 use ratatui::Frame;
@@ -12,6 +13,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use super::app::{App, View};
+use task_detail::TaskDetail;
 use task_list::TaskList;
 
 // ── 公开渲染入口 ───────────────────────────────────────────────────────────
@@ -135,53 +137,25 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(widget, area);
 }
 
-/// 渲染任务详情视图（占位）。
+/// 渲染任务详情视图。
+///
+/// 委托给 `TaskDetail` 组件的 `Widget` 实现，
+/// 传入当前任务和清单焦点索引即可完成渲染。
 fn draw_task_detail(f: &mut Frame, area: Rect, app: &App) {
-    let content = if let Some(task) = app.current_task() {
-        let done = task.checklist.iter().filter(|i| i.done).count();
-        let total = task.checklist.len();
-        vec![
-            Line::from(""),
-            Line::styled(
-                format!("  任务: {}", task.task_description),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ),
-            Line::from(format!(
-                "  ID: {}",
-                &task.id[..task.id.len().min(8)]
-            )),
-            Line::from(format!("  进度: {done}/{total}")),
-            Line::from(format!("  创建: {}", task.created_at)),
-            Line::from(""),
-            Line::styled(
-                format!(
-                    "  共 {} 个清单条目，{} 个笔记，{} 个资源",
-                    task.checklist.len(),
-                    task.notes.len(),
-                    task.resources.len()
-                ),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Line::from(""),
-            Line::styled(
-                "  ↑↓/jk 移动条目  Space 完成/撤销  ←/Esc 返回列表",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-        ]
+    if let Some(task) = app.current_task() {
+        let widget = TaskDetail::new(task, app.detail_item_index());
+        f.render_widget(widget, area);
     } else {
-        vec![
+        let content = vec![
             Line::from(""),
             Line::styled(
-                "  未加载任务详情",
+                "  未加载任务详情，按 Esc 返回列表",
                 Style::default().fg(Color::DarkGray),
             ),
-        ]
-    };
-
-    let paragraph = Paragraph::new(content);
-    f.render_widget(paragraph, area);
+        ];
+        let paragraph = Paragraph::new(content);
+        f.render_widget(paragraph, area);
+    }
 }
 
 /// 渲染任务创建/编辑表单（占位）。
