@@ -198,11 +198,11 @@ fn print_task_list_entry(entry: &TaskListEntry, long: bool) {
             .tags
             .as_ref()
             .map(|t| t.join(","))
-            .unwrap_or_default();
+            .unwrap_or_else(|| "-".to_owned());
 
         println!(
-            "{} {} {} {} {} {}",
-            entry.short_id, prio_padded, desc_padded, bar, fraction, tag_str
+            "{} {} {} {} {} {} {}",
+            entry.short_id, prio_padded, desc_padded, bar, fraction, tag_str, entry.created_date
         );
     } else {
         // 默认模式: short_id  description  bar  fraction

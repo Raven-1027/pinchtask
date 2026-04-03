@@ -152,9 +152,10 @@ fn run_ls(
         }
         "progress" => {
             sorted.sort_by(|a, b| {
-                let ra = progress_ratio(a);
-                let rb = progress_ratio(b);
-                ra.cmp(&rb)
+                let (ad, at) = progress_ratio(a);
+                let (bd, bt) = progress_ratio(b);
+                // 交叉相乘比较比例: ad/at vs bd/bt  =>  ad*bt vs bd*at
+                (ad * bt).cmp(&(bd * at))
             });
         }
         // "time" 或默认: 按创建时间排序（store 已按创建时间排序）
