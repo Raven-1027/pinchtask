@@ -942,6 +942,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "sqlx",

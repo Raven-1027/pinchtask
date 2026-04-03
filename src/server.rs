@@ -1,566 +1,537 @@
-//! MCP 服务器实现。
+//! MCP 服务器实现（基于 rmcp crate）。
 //!
-//! `McpServer` 持有 `TaskStore` 与工具定义列表，实现 MCP 协议生命周期：
-//! initialize → tools/list → tools/call。
-//! 通过 `StdioTransport` 与客户端通信。
+//! `PinchTaskServer` 使用 rmcp 的 `ServerHandler` + `ToolRouter` + `#[tool]` 宏
+//! 实现 MCP 协议，替代原先手动实现的 JSON-RPC 协议栈。
 
-use anyhow::Result;
-use serde_json::{json, Value};
+use std::sync::Arc;
 
-use crate::protocol::{
-    CallToolParams, CallToolResult, InitializeResult, JsonRpcRequest, JsonRpcResponse,
-    ServerInfo, ToolDefinition,
+use rmcp::{
+    ErrorData, ServerHandler,
+    handler::server::router::tool::ToolRouter,
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    tool, tool_handler, tool_router,
 };
-use crate::store::TaskStore;
-use crate::tools::task as task_tools;
-use crate::transport::StdioTransport;
+use uuid::Uuid;
 
-/// MCP 服务器。
-pub struct McpServer {
-    store: TaskStore,
-    transport: StdioTransport,
-    tool_definitions: Vec<ToolDefinition>,
-    server_info: ServerInfo,
+use crate::core;
+use crate::models::task::{ChecklistItem, Resource, Task, TaskMetadata};
+use crate::store::{StoreError, TaskStore};
+use crate::tools::params::*;
+
+// ---------------------------------------------------------------------------
+// PinchTaskServer
+// ---------------------------------------------------------------------------
+
+/// MCP 服务器，基于 rmcp crate。
+#[derive(Clone)]
+pub struct PinchTaskServer {
+    store: Arc<TaskStore>,
+    tool_router: ToolRouter<Self>,
 }
 
-impl McpServer {
+impl PinchTaskServer {
     /// 创建新的 MCP 服务器实例。
     pub fn new(store: TaskStore) -> Self {
-        let transport = StdioTransport::new();
-        let server_info = ServerInfo {
-            name: "mcp-pinchtask".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-        };
-        let mut server = Self {
-            store,
-            transport,
-            tool_definitions: Vec::new(),
-            server_info,
-        };
-        server.register_builtin_tools();
-        server
-    }
-
-    /// 注册内置工具（仅注册定义，handler 通过 match dispatch 调用）。
-    fn register_builtin_tools(&mut self) {
-        // ------------------------------------------------------------------
-        // initialize_task
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "initialize_task".to_owned(),
-            description: "Create a new task with a description, optional checklist items, notes, resources, and metadata.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_description": {
-                        "type": "string",
-                        "description": "A medium-level detailed description about the whole task"
-                    },
-                    "context_for_all_tasks": {
-                        "type": "string",
-                        "description": "Information that all tasks in the checklist should include"
-                    },
-                    "initial_checklist": {
-                        "type": "array",
-                        "description": "Optional initial checklist items",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "task": { "type": "string", "description": "Short name for the checklist item" },
-                                "detailed_description": { "type": "string", "description": "Detailed description" },
-                                "context_and_plan": { "type": "string", "description": "Context and plan" },
-                                "done": { "type": "boolean", "description": "Whether the item is already done", "default": false }
-                            },
-                            "required": ["task", "detailed_description"]
-                        }
-                    },
-                    "notes": {
-                        "type": "array",
-                        "description": "Optional initial notes",
-                        "items": { "type": "string" }
-                    },
-                    "resources": {
-                        "type": "array",
-                        "description": "Optional initial resources",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": { "type": "string" },
-                                "url": { "type": "string" },
-                                "description": { "type": "string" }
-                            },
-                            "required": ["name", "url"]
-                        }
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "description": "Optional metadata for the task",
-                        "properties": {
-                            "tags": {
-                                "type": "array",
-                                "items": { "type": "string" }
-                            },
-                            "priority": {
-                                "type": "string",
-                                "enum": ["high", "medium", "low"]
-                            },
-                            "estimated_completion_time": {
-                                "type": "string",
-                                "description": "ISO timestamp or duration"
-                            }
-                        }
-                    }
-                },
-                "required": ["task_description"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // update_task (统一更新)
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "update_task".to_owned(),
-            description: "Update multiple task fields at once: description, context, priority, tags, and/or eta. Only specified fields are modified.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task to update" },
-                    "task_description": { "type": "string", "description": "The new task description" },
-                    "context_for_all_tasks": { "type": "string", "description": "The new context information" },
-                    "priority": { "type": "string", "description": "Priority level", "enum": ["high", "medium", "low"] },
-                    "tags": { "type": "string", "description": "Comma-separated tags" },
-                    "eta": { "type": "string", "description": "Estimated completion time (ISO timestamp or duration)" }
-                },
-                "required": ["task_id"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // update_task_description
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "update_task_description".to_owned(),
-            description: "Update the overall description of an existing task.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task to update" },
-                    "task_description": { "type": "string", "description": "The new task description" }
-                },
-                "required": ["task_id", "task_description"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // update_context
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "update_context".to_owned(),
-            description: "Update the shared context information for all sub-tasks.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "context_for_all_tasks": { "type": "string", "description": "The new context information" }
-                },
-                "required": ["task_id", "context_for_all_tasks"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // add_checklist_item
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "add_checklist_item".to_owned(),
-            description: "Add a new item to the task checklist.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "task": { "type": "string", "description": "A short yet comprehensive name for the task" },
-                    "detailed_description": { "type": "string", "description": "A longer description about what we want to achieve" },
-                    "context_and_plan": { "type": "string", "description": "Related information and a detailed plan" }
-                },
-                "required": ["task_id", "task", "detailed_description"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // update_checklist_item
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "update_checklist_item".to_owned(),
-            description: "Update an existing checklist item.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "index": { "type": "integer", "description": "0-based index of the checklist item to update", "minimum": 0 },
-                    "task": { "type": "string", "description": "New short name" },
-                    "detailed_description": { "type": "string", "description": "New detailed description" },
-                    "context_and_plan": { "type": "string", "description": "New context and plan (pass null to clear)" },
-                    "done": { "type": "boolean", "description": "Whether the item is completed" }
-                },
-                "required": ["task_id", "index"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // mark_task_done
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "mark_task_done".to_owned(),
-            description: "Mark a specific checklist item as completed.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "index": { "type": "integer", "description": "0-based index of the checklist item", "minimum": 0 }
-                },
-                "required": ["task_id", "index"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // mark_task_undone
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "mark_task_undone".to_owned(),
-            description: "Mark a specific checklist item as not completed.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "index": { "type": "integer", "description": "0-based index of the checklist item", "minimum": 0 }
-                },
-                "required": ["task_id", "index"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // reorder_checklist_item
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "reorder_checklist_item".to_owned(),
-            description: "Move a checklist item to a new position.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "from_index": { "type": "integer", "description": "Current 0-based index", "minimum": 0 },
-                    "to_index": { "type": "integer", "description": "New 0-based index", "minimum": 0 }
-                },
-                "required": ["task_id", "from_index", "to_index"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // remove_checklist_item
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "remove_checklist_item".to_owned(),
-            description: "Remove a checklist item from the task.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "index": { "type": "integer", "description": "0-based index of the checklist item to remove", "minimum": 0 }
-                },
-                "required": ["task_id", "index"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // add_note
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "add_note".to_owned(),
-            description: "Add a note to the task.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "content": { "type": "string", "description": "The content of the note" }
-                },
-                "required": ["task_id", "content"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // add_resource
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "add_resource".to_owned(),
-            description: "Add a resource reference to the task.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "name": { "type": "string", "description": "Name of the resource" },
-                    "url": { "type": "string", "description": "URL or file path of the resource" },
-                    "description": { "type": "string", "description": "Description of the resource" }
-                },
-                "required": ["task_id", "name", "url"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // update_metadata
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "update_metadata".to_owned(),
-            description: "Update the task metadata (tags, priority, estimated completion time).".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "metadata": {
-                        "type": "object",
-                        "description": "The metadata object to set",
-                        "properties": {
-                            "tags": {
-                                "type": "array",
-                                "items": { "type": "string" }
-                            },
-                            "priority": {
-                                "type": "string",
-                                "enum": ["high", "medium", "low"]
-                            },
-                            "estimated_completion_time": {
-                                "type": "string",
-                                "description": "ISO timestamp or duration"
-                            }
-                        }
-                    }
-                },
-                "required": ["task_id", "metadata"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // get_checklist_summary
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "get_checklist_summary".to_owned(),
-            description: "Get a summary of the task checklist with completion status.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task" },
-                    "include_descriptions": { "type": "boolean", "description": "Whether to include detailed descriptions", "default": false }
-                },
-                "required": ["task_id"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // clear_task
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "clear_task".to_owned(),
-            description: "Delete a task by its ID.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "task_id": { "type": "string", "description": "The ID of the task to delete" }
-                },
-                "required": ["task_id"]
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // list_tasks (no params)
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "list_tasks".to_owned(),
-            description: "List all tasks sorted by creation time.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
-        });
-
-        // ------------------------------------------------------------------
-        // get_current_task_details (no params)
-        // ------------------------------------------------------------------
-        self.tool_definitions.push(ToolDefinition {
-            name: "get_current_task_details".to_owned(),
-            description: "Get details of the first uncompleted task (current task) with full context.".to_owned(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
-        });
-    }
-
-    /// 运行主循环：从 transport 读取请求并分发。
-    pub async fn run(mut self) -> Result<()> {
-        tracing::info!("MCP server starting stdio transport loop");
-        loop {
-            let request = match self.transport.read_request().await {
-                Ok(Some(req)) => req,
-                Ok(None) => {
-                    tracing::info!("Client disconnected (EOF)");
-                    break;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to read request: {e}");
-                    break;
-                }
-            };
-
-            let response = self.handle_request(request).await;
-            if let Err(e) = self.transport.write_response(&response).await {
-                tracing::error!("Failed to write response: {e}");
-                break;
-            }
-        }
-        tracing::info!("MCP server loop ended");
-        Ok(())
-    }
-
-    /// 分发请求到对应的处理器。
-    pub async fn handle_request(&mut self, request: JsonRpcRequest) -> JsonRpcResponse {
-        let id = request.id.clone();
-        match request.method.as_str() {
-            "initialize" => self.handle_initialize(id.clone(), request.params),
-            "notifications/initialized" => {
-                // 客户端确认初始化完成，无需响应通知
-                tracing::debug!("Received initialized notification");
-                JsonRpcResponse::ok(id, json!({}))
-            }
-            "tools/list" => self.handle_tools_list(id),
-            "tools/call" => self.handle_tools_call(id, request.params).await,
-            "ping" => JsonRpcResponse::ok(id, json!({})),
-            other => {
-                tracing::warn!("Unknown method: {other}");
-                JsonRpcResponse::err(id, -32601, format!("Method not found: {other}"))
-            }
-        }
-    }
-
-    /// 处理 initialize 请求。
-    fn handle_initialize(&self, id: Option<Value>, _params: Option<Value>) -> JsonRpcResponse {
-        let result = InitializeResult {
-            protocol_version: "2024-11-05".to_owned(),
-            capabilities: json!({
-                "tools": {}
-            }),
-            server_info: self.server_info.clone(),
-        };
-        JsonRpcResponse::ok(id, serde_json::to_value(result).expect("序列化 InitializeResult 不应失败"))
-    }
-
-    /// 处理 tools/list 请求。
-    fn handle_tools_list(&self, id: Option<Value>) -> JsonRpcResponse {
-        JsonRpcResponse::ok(id, json!({ "tools": &self.tool_definitions }))
-    }
-
-    /// 处理 tools/call 请求。
-    ///
-    /// 使用 match dispatch 直接调用对应的 async handler，无需函数指针。
-    async fn handle_tools_call(
-        &self,
-        id: Option<Value>,
-        params: Option<Value>,
-    ) -> JsonRpcResponse {
-        let params: CallToolParams = match params {
-            Some(v) => match serde_json::from_value(v) {
-                Ok(p) => p,
-                Err(e) => {
-                    return JsonRpcResponse::err(
-                        id,
-                        -32602,
-                        format!("Invalid params: {e}"),
-                    );
-                }
-            },
-            None => {
-                return JsonRpcResponse::err(id, -32602, "Missing params");
-            }
-        };
-
-        let tool_name = params.name.as_str();
-        let args = params.arguments;
-
-        let result: std::result::Result<CallToolResult, String> = match tool_name {
-            "initialize_task" => {
-                task_tools::initialize_task_handler(&self.store, args).await
-            }
-            "update_task" => {
-                task_tools::update_task_handler(&self.store, args).await
-            }
-            "update_task_description" => {
-                task_tools::update_task_description_handler(&self.store, args).await
-            }
-            "update_context" => {
-                task_tools::update_context_handler(&self.store, args).await
-            }
-            "add_checklist_item" => {
-                task_tools::add_checklist_item_handler(&self.store, args).await
-            }
-            "update_checklist_item" => {
-                task_tools::update_checklist_item_handler(&self.store, args).await
-            }
-            "mark_task_done" => {
-                task_tools::mark_task_done_handler(&self.store, args).await
-            }
-            "mark_task_undone" => {
-                task_tools::mark_task_undone_handler(&self.store, args).await
-            }
-            "reorder_checklist_item" => {
-                task_tools::reorder_checklist_item_handler(&self.store, args).await
-            }
-            "remove_checklist_item" => {
-                task_tools::remove_checklist_item_handler(&self.store, args).await
-            }
-            "add_note" => {
-                task_tools::add_note_handler(&self.store, args).await
-            }
-            "add_resource" => {
-                task_tools::add_resource_handler(&self.store, args).await
-            }
-            "update_metadata" => {
-                task_tools::update_metadata_handler(&self.store, args).await
-            }
-            "get_checklist_summary" => {
-                task_tools::get_checklist_summary_handler(&self.store, args).await
-            }
-            "clear_task" => {
-                task_tools::clear_task_handler(&self.store, args).await
-            }
-            "list_tasks" => {
-                task_tools::list_tasks_handler(&self.store, args).await
-            }
-            "get_current_task_details" => {
-                task_tools::get_current_task_details_handler(&self.store, args).await
-            }
-            _ => {
-                return JsonRpcResponse::err(
-                    id,
-                    -32601,
-                    format!("Unknown tool: {tool_name}"),
-                );
-            }
-        };
-
-        match result {
-            Ok(result) => JsonRpcResponse::ok(
-                id,
-                serde_json::to_value(result).expect("序列化 CallToolResult 不应失败"),
-            ),
-            Err(e) => JsonRpcResponse::ok(
-                id,
-                serde_json::to_value(CallToolResult::error_result(e))
-                    .expect("序列化 error CallToolResult 不应失败"),
-            ),
+        Self {
+            store: Arc::new(store),
+            tool_router: Self::tool_router(),
         }
     }
 }
 
-/// 启动 MCP 服务器的入口函数（使用默认数据目录）。
-pub async fn run() -> Result<()> {
-    let store = TaskStore::new(None).await?;
-    let server = McpServer::new(store);
-    server.run().await
+// ---------------------------------------------------------------------------
+// 辅助函数
+// ---------------------------------------------------------------------------
+
+/// 将 Task 序列化为 CallToolResult（成功）。
+fn task_to_result(task: &Task) -> CallToolResult {
+    let json = serde_json::to_string_pretty(task)
+        .unwrap_or_else(|e| format!("序列化任务失败: {e}"));
+    text_result(json, false)
+}
+
+/// 构造文本类型的 CallToolResult。
+fn text_result(text: String, is_error: bool) -> CallToolResult {
+    let content = vec![Content::text(text)];
+    if is_error {
+        CallToolResult::error(content)
+    } else {
+        CallToolResult::success(content)
+    }
+}
+
+/// 将 `Result<T, StoreError>` 转换为 `Result<CallToolResult, ErrorData>`。
+///
+/// 业务逻辑错误（StoreError）映射为 `is_error: true` 的工具错误结果，
+/// 与迁移前的行为保持一致。
+trait StoreResultExt<T> {
+    fn into_tool_result(self, ok_fn: impl FnOnce(T) -> CallToolResult) -> Result<CallToolResult, ErrorData>;
+}
+
+impl<T> StoreResultExt<T> for Result<T, StoreError> {
+    fn into_tool_result(
+        self,
+        ok_fn: impl FnOnce(T) -> CallToolResult,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self {
+            Ok(v) => Ok(ok_fn(v)),
+            Err(e) => Ok(text_result(format!("{e}"), true)),
+        }
+    }
+}
+
+/// 将 `Result<(), StoreError>` 转换为 `Result<CallToolResult, ErrorData>`。
+fn void_result(
+    result: Result<(), StoreError>,
+    success_msg: String,
+) -> Result<CallToolResult, ErrorData> {
+    match result {
+        Ok(()) => Ok(text_result(success_msg, false)),
+        Err(e) => Ok(text_result(format!("{e}"), true)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 工具方法（#[tool_router] 自动注册到 ToolRouter）
+// ---------------------------------------------------------------------------
+
+#[tool_router]
+impl PinchTaskServer {
+    // ------------------------------------------------------------------
+    // 1. initialize_task
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "initialize_task",
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata."
+    )]
+    pub async fn initialize_task(
+        &self,
+        Parameters(params): Parameters<InitializeTaskParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let initial_checklist: Vec<ChecklistItem> = params
+            .initial_checklist
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| ChecklistItem {
+                id: item.id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                task: item.task,
+                detailed_description: item.detailed_description,
+                context_and_plan: item.context_and_plan,
+                done: item.done,
+            })
+            .collect();
+
+        let resources: Vec<Resource> = params
+            .resources
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| Resource {
+                name: r.name,
+                url: r.url,
+                description: r.description,
+            })
+            .collect();
+
+        let metadata: Option<TaskMetadata> = params.metadata.map(|m| TaskMetadata {
+            tags: m.tags,
+            priority: m.priority,
+            estimated_completion_time: m.estimated_completion_time,
+        });
+
+        core::initialize_task(
+            &self.store,
+            &params.task_description,
+            params.context_for_all_tasks.as_deref(),
+            initial_checklist,
+            params.notes.unwrap_or_default(),
+            resources,
+            metadata,
+        )
+        .await
+        .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 2. update_task（统一更新多个字段）
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "update_task",
+        description = "Update multiple task fields at once: description, context, priority, tags, and/or eta. Only specified fields are modified."
+    )]
+    pub async fn update_task(
+        &self,
+        Parameters(params): Parameters<UpdateTaskParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if params.task_description.is_none()
+            && params.context_for_all_tasks.is_none()
+            && params.priority.is_none()
+            && params.tags.is_none()
+            && params.eta.is_none()
+        {
+            return Ok(text_result(
+                "至少需要指定一个可修改的字段 (task_description / context_for_all_tasks / priority / tags / eta)"
+                    .to_owned(),
+                true,
+            ));
+        }
+
+        // 更新 description
+        if let Some(desc) = &params.task_description {
+            match core::update_task_description(&self.store, &params.task_id, desc).await {
+                Ok(_) => {}
+                Err(e) => return Ok(text_result(format!("{e}"), true)),
+            }
+        }
+        // 更新 context
+        if let Some(ctx) = &params.context_for_all_tasks {
+            match core::update_context(&self.store, &params.task_id, ctx).await {
+                Ok(_) => {}
+                Err(e) => return Ok(text_result(format!("{e}"), true)),
+            }
+        }
+        // 更新 metadata
+        if params.priority.is_some() || params.tags.is_some() || params.eta.is_some() {
+            let existing = match self.store.get_task(&params.task_id).await {
+                Ok(t) => t,
+                Err(e) => return Ok(text_result(format!("{e}"), true)),
+            };
+            let mut metadata = existing.metadata.unwrap_or(TaskMetadata {
+                tags: None,
+                priority: None,
+                estimated_completion_time: None,
+            });
+            if let Some(p) = &params.priority {
+                metadata.priority = Some(p.clone());
+            }
+            if let Some(t) = &params.tags {
+                metadata.tags = Some(
+                    t.split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                );
+            }
+            if let Some(e) = &params.eta {
+                metadata.estimated_completion_time = Some(e.clone());
+            }
+            match core::update_metadata(&self.store, &params.task_id, metadata).await {
+                Ok(_) => {}
+                Err(e) => return Ok(text_result(format!("{e}"), true)),
+            }
+        }
+
+        let task = match self.store.get_task(&params.task_id).await {
+            Ok(t) => t,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+        Ok(task_to_result(&task))
+    }
+
+    // ------------------------------------------------------------------
+    // 3. update_task_description
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "update_task_description",
+        description = "Update the overall description of an existing task."
+    )]
+    pub async fn update_task_description(
+        &self,
+        Parameters(params): Parameters<UpdateTaskDescriptionParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::update_task_description(&self.store, &params.task_id, &params.task_description)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 4. update_context
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "update_context",
+        description = "Update the shared context information for all sub-tasks."
+    )]
+    pub async fn update_context(
+        &self,
+        Parameters(params): Parameters<UpdateContextParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::update_context(&self.store, &params.task_id, &params.context_for_all_tasks)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 5. add_checklist_item
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "add_checklist_item",
+        description = "Add a new item to the task checklist."
+    )]
+    pub async fn add_checklist_item(
+        &self,
+        Parameters(params): Parameters<AddChecklistItemParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::add_checklist_item(
+            &self.store,
+            &params.task_id,
+            &params.task,
+            &params.detailed_description,
+            params.context_and_plan.as_deref(),
+        )
+        .await
+        .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 6. update_checklist_item
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "update_checklist_item",
+        description = "Update an existing checklist item."
+    )]
+    pub async fn update_checklist_item(
+        &self,
+        Parameters(params): Parameters<UpdateChecklistItemParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::update_checklist_item(
+            &self.store,
+            &params.task_id,
+            params.index as usize,
+            params.task.as_deref(),
+            params.detailed_description.as_deref(),
+            params.context_and_plan.as_ref().map(|o| o.as_deref()),
+            params.done,
+        )
+        .await
+        .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 7. mark_task_done
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "mark_task_done",
+        description = "Mark a specific checklist item as completed."
+    )]
+    pub async fn mark_task_done(
+        &self,
+        Parameters(params): Parameters<MarkTaskDoneParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::mark_task_done(&self.store, &params.task_id, params.index as usize)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 8. mark_task_undone
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "mark_task_undone",
+        description = "Mark a specific checklist item as not completed."
+    )]
+    pub async fn mark_task_undone(
+        &self,
+        Parameters(params): Parameters<MarkTaskUndoneParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::mark_task_undone(&self.store, &params.task_id, params.index as usize)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 9. reorder_checklist_item
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "reorder_checklist_item",
+        description = "Move a checklist item to a new position."
+    )]
+    pub async fn reorder_checklist_item(
+        &self,
+        Parameters(params): Parameters<ReorderChecklistItemParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::reorder_checklist_item(
+            &self.store,
+            &params.task_id,
+            params.from_index as usize,
+            params.to_index as usize,
+        )
+        .await
+        .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 10. remove_checklist_item
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "remove_checklist_item",
+        description = "Remove a checklist item from the task."
+    )]
+    pub async fn remove_checklist_item(
+        &self,
+        Parameters(params): Parameters<RemoveChecklistItemParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::remove_checklist_item(&self.store, &params.task_id, params.index as usize)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 11. add_note
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "add_note",
+        description = "Add a note to the task."
+    )]
+    pub async fn add_note(
+        &self,
+        Parameters(params): Parameters<AddNoteParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::add_note(&self.store, &params.task_id, &params.content)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 12. add_resource
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "add_resource",
+        description = "Add a resource reference to the task."
+    )]
+    pub async fn add_resource(
+        &self,
+        Parameters(params): Parameters<AddResourceParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::add_resource(
+            &self.store,
+            &params.task_id,
+            &params.name,
+            &params.url,
+            params.description.as_deref(),
+        )
+        .await
+        .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 13. update_metadata
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "update_metadata",
+        description = "Update the task metadata (tags, priority, estimated completion time)."
+    )]
+    pub async fn update_metadata(
+        &self,
+        Parameters(params): Parameters<UpdateMetadataParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let metadata = TaskMetadata {
+            tags: params.metadata.tags,
+            priority: params.metadata.priority,
+            estimated_completion_time: params.metadata.estimated_completion_time,
+        };
+        core::update_metadata(&self.store, &params.task_id, metadata)
+            .await
+            .into_tool_result(|t| task_to_result(&t))
+    }
+
+    // ------------------------------------------------------------------
+    // 14. get_checklist_summary
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "get_checklist_summary",
+        description = "Get a summary of the task checklist with completion status."
+    )]
+    pub async fn get_checklist_summary(
+        &self,
+        Parameters(params): Parameters<GetChecklistSummaryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let _include_descriptions = params.include_descriptions.unwrap_or(false);
+        core::get_checklist_summary(&self.store, &params.task_id)
+            .await
+            .into_tool_result(|s| text_result(s, false))
+    }
+
+    // ------------------------------------------------------------------
+    // 15. clear_task
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "clear_task",
+        description = "Delete a task by its ID."
+    )]
+    pub async fn clear_task(
+        &self,
+        Parameters(params): Parameters<ClearTaskParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        void_result(
+            core::clear_task(&self.store, &params.task_id).await,
+            format!("任务 {} 已删除", params.task_id),
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // 16. list_tasks
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "list_tasks",
+        description = "List all tasks sorted by creation time."
+    )]
+    pub async fn list_tasks(
+        &self,
+        Parameters(_params): Parameters<ListTasksParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        core::list_tasks_summary(&self.store)
+            .await
+            .into_tool_result(|s| text_result(s, false))
+    }
+
+    // ------------------------------------------------------------------
+    // 17. get_current_task_details
+    // ------------------------------------------------------------------
+    #[tool(
+        name = "get_current_task_details",
+        description = "Get details of the first uncompleted task (current task) with full context."
+    )]
+    pub async fn get_current_task_details(
+        &self,
+        Parameters(_params): Parameters<GetCurrentTaskDetailsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tasks = match self.store.list_tasks().await {
+            Ok(t) => t,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+        let current_task = match tasks.iter().find(|t| t.checklist.iter().any(|item| !item.done)) {
+            Some(t) => t,
+            None => {
+                return Ok(text_result(
+                    "没有找到包含未完成子任务的任务".to_owned(),
+                    true,
+                ))
+            }
+        };
+        core::get_current_task_details(&self.store, &current_task.id)
+            .await
+            .into_tool_result(|s| text_result(s, false))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ServerHandler 实现（#[tool_handler] 自动实现 call_tool / list_tools / get_tool）
+// ---------------------------------------------------------------------------
+
+#[tool_handler]
+impl ServerHandler for PinchTaskServer {
+    fn get_info(&self) -> ServerInfo {
+        let capabilities = ServerCapabilities::builder().enable_tools().build();
+        // ServerInfo (= InitializeResult) 是 #[non_exhaustive]，
+        // 通过 serde_json 中转构造完整结构。
+        let value = serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": capabilities,
+            "serverInfo": {
+                "name": "mcp-pinchtask",
+                "version": env!("CARGO_PKG_VERSION")
+            }
+        });
+        serde_json::from_value(value).expect("构造 ServerInfo 不应失败")
+    }
 }
