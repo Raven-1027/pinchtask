@@ -269,6 +269,30 @@ impl App {
                     self.selected_index += 1;
                 }
             }
+            // 查看任务详情：从缓存中复制选中任务，切换到 TaskDetail 视图
+            KeyCode::Enter => {
+                if let Some(task) = self.tasks.get(self.selected_index).cloned() {
+                    self.current_task = Some(task);
+                    self.view = View::TaskDetail;
+                    self.error_message = None;
+                }
+            }
+            // 新建任务：切换到 TaskForm 视图
+            KeyCode::Char('n') => {
+                self.view = View::TaskForm;
+                self.message = None;
+                self.error_message = None;
+            }
+            // 删除选中任务：设置确认提示（实际删除需异步操作，后续子任务实现）
+            KeyCode::Char('d') => {
+                if let Some(task) = self.tasks.get(self.selected_index) {
+                    let id_short = &task.id[..task.id.len().min(8)];
+                    self.message = Some(format!(
+                        "删除功能待实现: 选中任务 {id_short} ({})",
+                        task.task_description
+                    ));
+                }
+            }
             // 刷新列表（标记为需要重新加载）
             KeyCode::Char('r') => {
                 self.message = Some("按 r 刷新列表（异步加载中...）".to_owned());

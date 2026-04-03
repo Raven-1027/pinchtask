@@ -3,6 +3,8 @@
 //! 负责将 `App` 状态绘制到终端帧缓冲区。
 //! 每个视图对应一个独立的渲染函数。
 
+mod task_list;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -10,6 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use super::app::{App, View};
+use task_list::TaskList;
 
 // ── 公开渲染入口 ───────────────────────────────────────────────────────────
 
@@ -124,94 +127,12 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
 // ── 视图渲染函数 ───────────────────────────────────────────────────────────
 
 /// 渲染任务列表视图。
+///
+/// 委托给 `TaskList` 组件的 `Widget` 实现，
+/// 传入任务数据和选中索引即可完成渲染。
 fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
-    let tasks = app.tasks();
-    let selected = app.selected_index();
-
-    if tasks.is_empty() {
-        let empty_msg = Paragraph::new(vec![
-            Line::from(""),
-            Line::styled(
-                "  暂无任务",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-            ),
-            Line::from(""),
-            Line::styled(
-                "  按 n 创建新任务，按 ? 查看帮助",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]);
-        f.render_widget(empty_msg, area);
-        return;
-    }
-
-    // 构建任务行列表
-    let mut lines: Vec<Line> = Vec::new();
-
-    // 表头
-    lines.push(Line::from(vec![
-        Span::styled("  # ", Style::default().fg(Color::DarkGray)),
-        Span::styled("ID       ", Style::default().fg(Color::DarkGray)),
-        Span::styled("描述                ", Style::default().fg(Color::DarkGray)),
-        Span::styled("进度   ", Style::default().fg(Color::DarkGray)),
-        Span::styled("优先级", Style::default().fg(Color::DarkGray)),
-    ]));
-    lines.push(Line::from(Span::styled(
-        "─".repeat(area.width.saturating_sub(2) as usize),
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    // 任务行
-    for (i, task) in tasks.iter().enumerate() {
-        let is_selected = i == selected;
-
-        // 选中行标记
-        let marker = if is_selected { "▸" } else { " " };
-
-        // ID 前 8 位
-        let id_short = &task.id[..task.id.len().min(8)];
-
-        // 进度：已完成/总数
-        let done_count = task.checklist.iter().filter(|item| item.done).count();
-        let total = task.checklist.len();
-        let progress = format!("{done_count}/{total}");
-
-        // 优先级
-        let priority = task
-            .metadata
-            .as_ref()
-            .and_then(|m| m.priority.as_deref())
-            .unwrap_or("-");
-
-        let style = if is_selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {marker} "), style),
-            Span::styled(format!("{id_short:<8} "), style),
-            // 描述截断到 20 字符
-            Span::styled(
-                truncate_str(&task.task_description, 20),
-                style,
-            ),
-            Span::raw(" "),
-            Span::styled(format!("{progress:<5} "), style),
-            Span::styled(priority.to_owned(), style),
-        ]));
-    }
-
-    // 底部信息行
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        format!("  共 {} 个任务", tasks.len()),
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    let paragraph = Paragraph::new(lines);
-    f.render_widget(paragraph, area);
+    let widget = TaskList::new(app.tasks(), app.selected_index());
+    f.render_widget(widget, area);
 }
 
 /// 渲染任务详情视图（占位）。
@@ -375,23 +296,4 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
     f.render_widget(paragraph, area);
 }
 
-// ── 辅助函数 ───────────────────────────────────────────────────────────────
 
-/// 将字符串截断到指定字符宽度。
-///
-/// 如果字符数超过 `max_len`，截断并追加 `…`；
-/// 不足则用空格填充到 `max_len`。
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() <= max_len {
-        // 用空格右填充到 max_len
-        let mut result = s.to_owned();
-        while result.chars().count() < max_len {
-            result.push(' ');
-        }
-        result
-    } else {
-        let truncated: String = chars[..max_len.saturating_sub(1)].iter().collect();
-        format!("{truncated}…")
-    }
-}
