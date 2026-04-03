@@ -72,9 +72,7 @@ pub fn print(output: Output, json: bool) {
 /// `unwrap()` 以便在极端情况下给出可诊断的 panic 消息。
 fn print_json(output: &Output) {
     let json_str = match output {
-        Output::Task(task) => {
-            serde_json::to_string_pretty(task).expect("序列化 Task 不应失败")
-        }
+        Output::Task(task) => serde_json::to_string_pretty(task).expect("序列化 Task 不应失败"),
         Output::TaskList { tasks, .. } => {
             serde_json::to_string_pretty(tasks).expect("序列化 TaskList 不应失败")
         }
@@ -146,10 +144,7 @@ pub fn task_to_list_entry(task: &Task) -> TaskListEntry {
 
     let short_id = task.id[..8.min(task.id.len())].to_owned();
 
-    let priority = task
-        .metadata
-        .as_ref()
-        .and_then(|m| m.priority.clone());
+    let priority = task.metadata.as_ref().and_then(|m| m.priority.clone());
 
     let tags = task
         .metadata
@@ -188,10 +183,7 @@ fn print_task_list_entry(entry: &TaskListEntry, long: bool) {
 
     if long {
         // -l 模式: short_id  priority  description  bar  fraction  tags  date
-        let prio = entry
-            .priority
-            .as_deref()
-            .unwrap_or("    ");
+        let prio = entry.priority.as_deref().unwrap_or("    ");
         let prio_padded = format!("{:<5}", prio);
 
         let tag_str = entry
@@ -251,7 +243,9 @@ fn print_task_detail(task: &Task) {
             let status = if item.done { "✅" } else { "⬜" };
             println!("  {status} [{i}] {}", item.task);
             if !item.detailed_description.is_empty() {
-                println!("       {}", item.detailed_description);
+                for line in item.detailed_description.lines() {
+                    println!("       {}", line);
+                }
             }
             if let Some(ref plan) = item.context_and_plan {
                 println!("       计划: {plan}");
@@ -311,7 +305,13 @@ fn unicode_width(s: &str) -> usize {
 fn truncate_to_width(s: &str, max_width: usize) -> String {
     let mut width = 0;
     for c in s.chars() {
-        let cw = if c.is_ascii() { 1 } else if c > '\u{2E80}' { 2 } else { 1 };
+        let cw = if c.is_ascii() {
+            1
+        } else if c > '\u{2E80}' {
+            2
+        } else {
+            1
+        };
         if width + cw > max_width {
             break;
         }
@@ -321,7 +321,13 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
     let mut byte_pos = 0;
     let mut w = 0;
     for c in s.chars() {
-        let cw = if c.is_ascii() { 1 } else if c > '\u{2E80}' { 2 } else { 1 };
+        let cw = if c.is_ascii() {
+            1
+        } else if c > '\u{2E80}' {
+            2
+        } else {
+            1
+        };
         if w + cw > max_width {
             break;
         }
