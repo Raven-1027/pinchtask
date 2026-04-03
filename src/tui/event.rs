@@ -1,9 +1,42 @@
 //! 事件定义与异步事件总线。
 //!
 //! 使用 tokio::sync::mpsc channel 桥接 crossterm 终端事件与应用主循环。
-//! crossterm 事件在独立任务中轮询，通过 channel 发送到主循环。
+//! crossterm 事件在独立 tokio task 中轮询，通过 channel 发送到主循环。
 
-use crossterm::event::KeyEvent;
+use std::time::Duration;
+
+use crossterm::event::{Event as CrosstermEvent, KeyEvent};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+
+use crate::models::task::Task;
+
+// ── 轮询超时 ───────────────────────────────────────────────────────────────
+
+/// crossterm 事件轮询超时（毫秒）。
+const POLL_TIMEOUT_MS: u64 = 250;
+
+// ── 异步操作结果 ───────────────────────────────────────────────────────────
+
+/// 后台异步任务完成后的结果类型。
+///
+/// 用于将 store 操作的结果回传给主循环，更新 App 状态。
+#[derive(Debug)]
+pub enum Action {
+    /// 任务列表加载完成
+    TasksLoaded(Vec<Task>),
+    /// 单个任务加载完成（查看详情）
+    TaskDetailLoaded(Task),
+    /// 清单条目完成状态已切换
+    ItemToggled,
+    /// 清单条目已添加
+    ItemAdded,
+    /// 清单条目已移除
+    ItemRemoved,
+    /// 清单条目已编辑
+    ItemEdited,
+    /// 操作出错
+    Error(String),
+}
 
 // ── 应用事件 ───────────────────────────────────────────────────────────────
 
@@ -14,8 +47,8 @@ pub enum AppEvent {
     Key(KeyEvent),
     /// 终端尺寸变化
     Resize(u16, u16),
-    /// 请求退出 TUI
-    Quit,
+    /// 异步操作结果
+    Action(Action),
 }
 
 // ── 事件总线 ───────────────────────────────────────────────────────────────
@@ -27,31 +60,65 @@ pub enum AppEvent {
 /// - 将原始事件转换为 AppEvent 并发送到 mpsc channel
 /// - 主循环通过 EventBus::next() 接收
 pub struct EventBus {
-    // TODO: 添加 sender/receiver 字段
-    // rx: tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+    /// channel 接收端，主循环从此取出事件
+    rx: UnboundedReceiver<AppEvent>,
+    /// channel 发送端句柄（供外部发送 Action 事件）
+    tx: UnboundedSender<AppEvent>,
 }
 
 impl EventBus {
     /// 创建新的事件总线。
     ///
-    /// 启动后台轮询任务，监听 crossterm 终端事件。
-    /// TODO: 实现 crossterm 事件轮询 + channel 发送
+    /// 启动后台 tokio task，以 POLL_TIMEOUT_MS 间隔轮询 crossterm 终端事件，
+    /// 将 KeyEvent / Resize 转换为 AppEvent 并通过 channel 发送。
     pub fn new() -> Self {
-        Self {
-            // rx: ...,
-        }
+        let (tx, rx) = mpsc::unbounded_channel();
+        let sender = tx.clone();
+
+        tokio::spawn(async move {
+            loop {
+                // 以固定超时轮询，避免阻塞
+                if crossterm::event::poll(Duration::from_millis(POLL_TIMEOUT_MS))
+                    .unwrap_or(false)
+                {
+                    match crossterm::event::read() {
+                        Ok(event) => {
+                            let app_event = match event {
+                                CrosstermEvent::Key(key) => AppEvent::Key(key),
+                                CrosstermEvent::Resize(w, h) => AppEvent::Resize(w, h),
+                                // 鼠标事件暂不处理
+                                _ => continue,
+                            };
+                            // channel 关闭说明主循环已退出，结束轮询
+                            if sender.send(app_event).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            // crossterm 读取失败，发送端已关闭时退出
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        Self { rx, tx }
     }
 
     /// 等待并返回下一个应用事件。
     ///
-    /// TODO: 实现 channel 接收
-    /// async fn next(&mut self) -> AppEvent {
-    ///     self.rx.recv().await.expect("event channel closed")
-    /// }
-    pub async fn next(&mut self) -> AppEvent {
-        // TODO: 替换为真实 channel 接收
-        // 骨架阶段直接返回 Quit 以便主循环能结束
-        AppEvent::Quit
+    /// 阻塞当前 tokio task 直到有事件可用。
+    /// 返回 `None` 表示 channel 已关闭（所有发送端已 drop）。
+    pub async fn next(&mut self) -> Option<AppEvent> {
+        self.rx.recv().await
+    }
+
+    /// 返回 channel 发送端的克隆引用。
+    ///
+    /// 用于从主循环向自身发送 Action 事件（如异步操作完成后回传结果）。
+    pub fn sender(&self) -> UnboundedSender<AppEvent> {
+        self.tx.clone()
     }
 }
 
