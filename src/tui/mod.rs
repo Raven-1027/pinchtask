@@ -6,7 +6,7 @@ pub mod app;
 pub mod event;
 pub mod ui;
 
-use std::io::{self, Write};
+use std::io;
 use std::path::PathBuf;
 
 use anyhow::Result;

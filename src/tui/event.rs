@@ -20,20 +20,23 @@ const POLL_TIMEOUT_MS: u64 = 250;
 /// 后台异步任务完成后的结果类型。
 ///
 /// 用于将 store 操作的结果回传给主循环，更新 App 状态。
+/// 携带最新 Task 数据以刷新详情视图。
 #[derive(Debug)]
 pub enum Action {
     /// 任务列表加载完成
     TasksLoaded(Vec<Task>),
     /// 单个任务加载完成（查看详情）
     TaskDetailLoaded(Task),
-    /// 清单条目完成状态已切换
-    ItemToggled,
-    /// 清单条目已添加
-    ItemAdded,
-    /// 清单条目已移除
-    ItemRemoved,
-    /// 清单条目已编辑
-    ItemEdited,
+    /// 清单条目完成状态已切换（携带更新后的任务）
+    ItemToggled(Task),
+    /// 清单条目已添加（携带更新后的任务）
+    ItemAdded(Task),
+    /// 清单条目已移除（携带更新后的任务）
+    ItemRemoved(Task),
+    /// 清单条目已编辑（携带更新后的任务）
+    ItemEdited(Task),
+    /// 清单条目已重排（携带更新后的任务）
+    ItemReordered(Task),
     /// 任务已删除（携带被删除任务的 ID）
     TaskDeleted(String),
     /// 操作出错
