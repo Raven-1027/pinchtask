@@ -31,7 +31,7 @@ struct Cli {
     command: Option<Commands>,
 
     /// 数据存储目录路径（默认: ~/.mcp-pinchtask）
-    #[arg(long, global = true, env = "PINCHTASK_DATA_DIR")]
+    #[arg(short = 'D', long, global = true, env = "PINCHTASK_DATA_DIR")]
     data_dir: Option<PathBuf>,
 
     /// 日志级别 (trace, debug, info, warn, error)
@@ -89,21 +89,37 @@ enum Commands {
         /// 任务 ID（支持短前缀）
         id: String,
     },
-    /// 编辑任务描述或上下文
+    /// 编辑任务或清单条目
     Edit {
         /// 任务 ID（支持短前缀）
         id: String,
-        /// 新的任务描述
+        /// 清单条目索引（不传则编辑任务本身）
+        index: Option<usize>,
+        /// 新的任务描述（任务级）或条目描述（条目级）
         #[arg(short, long)]
         description: Option<String>,
-        /// 新的共享上下文
+        /// 新的共享上下文（仅任务级）
         #[arg(short, long)]
         context: Option<String>,
+        /// 新标题（仅条目级）
+        #[arg(short, long)]
+        title: Option<String>,
+        /// 新计划（仅条目级）
+        #[arg(short, long)]
+        plan: Option<String>,
+        /// 标记为已完成（仅条目级）
+        #[arg(long, conflicts_with = "undone")]
+        done: bool,
+        /// 标记为未完成（仅条目级）
+        #[arg(long, conflicts_with = "done")]
+        undone: bool,
     },
-    /// 删除任务
+    /// 删除任务或清单条目
     Rm {
         /// 任务 ID（支持短前缀）
         id: String,
+        /// 清单条目索引（不传则删除任务本身）
+        index: Option<usize>,
     },
 
     // ── 清单条目 ──────────────────────────────────────
@@ -127,28 +143,7 @@ enum Commands {
         /// 条目索引
         index: usize,
     },
-    /// 编辑清单条目
-    EditItem {
-        /// 任务 ID（支持短前缀）
-        task_id: String,
-        /// 条目索引
-        index: usize,
-        /// 新标题
-        #[arg(short, long)]
-        title: Option<String>,
-        /// 新描述
-        #[arg(short, long)]
-        description: Option<String>,
-        /// 新计划
-        #[arg(short, long)]
-        plan: Option<String>,
-        /// 标记为已完成
-        #[arg(long, conflicts_with = "undone")]
-        done: bool,
-        /// 标记为未完成
-        #[arg(long, conflicts_with = "done")]
-        undone: bool,
-    },
+
     /// 移动清单条目顺序
     Mv {
         /// 任务 ID（支持短前缀）
@@ -158,13 +153,7 @@ enum Commands {
         /// 目标索引
         to: usize,
     },
-    /// 删除清单条目
-    RmItem {
-        /// 任务 ID（支持短前缀）
-        task_id: String,
-        /// 条目索引
-        index: usize,
-    },
+
     /// 查看清单进度摘要
     Summary {
         /// 任务 ID（支持短前缀）
@@ -289,19 +278,57 @@ pub async fn run() -> Result<()> {
         }
         Commands::Edit {
             id,
+            index,
             description,
             context,
+            title,
+            plan,
+            done,
+            undone,
         } => {
             let store = TaskStore::new(data_dir)?;
-            task::run(
-                &task::TaskCommand::Edit { id, description, context },
-                &store,
-                json_output,
-            )
+            match index {
+                Some(idx) => item::run(
+                    &item::ItemCommand::EditItem {
+                        task_id: id,
+                        index: idx,
+                        title,
+                        description,
+                        plan,
+                        done,
+                        undone,
+                    },
+                    &store,
+                    json_output,
+                ),
+                None => task::run(
+                    &task::TaskCommand::Edit {
+                        id,
+                        description,
+                        context,
+                    },
+                    &store,
+                    json_output,
+                ),
+            }
         }
-        Commands::Rm { id } => {
+        Commands::Rm { id, index } => {
             let store = TaskStore::new(data_dir)?;
-            task::run(&task::TaskCommand::Rm { id }, &store, json_output)
+            match index {
+                Some(idx) => item::run(
+                    &item::ItemCommand::RmItem {
+                        task_id: id,
+                        index: idx,
+                    },
+                    &store,
+                    json_output,
+                ),
+                None => task::run(
+                    &task::TaskCommand::Rm { id },
+                    &store,
+                    json_output,
+                ),
+            }
         }
 
         // 清单条目
@@ -322,30 +349,7 @@ pub async fn run() -> Result<()> {
             let store = TaskStore::new(data_dir)?;
             item::run(&item::ItemCommand::Check { task_id, index }, &store, json_output)
         }
-        Commands::EditItem {
-            task_id,
-            index,
-            title,
-            description,
-            plan,
-            done,
-            undone,
-        } => {
-            let store = TaskStore::new(data_dir)?;
-            item::run(
-                &item::ItemCommand::EditItem {
-                    task_id,
-                    index,
-                    title,
-                    description,
-                    plan,
-                    done,
-                    undone,
-                },
-                &store,
-                json_output,
-            )
-        }
+
         Commands::Mv {
             task_id,
             from,
@@ -358,10 +362,7 @@ pub async fn run() -> Result<()> {
                 json_output,
             )
         }
-        Commands::RmItem { task_id, index } => {
-            let store = TaskStore::new(data_dir)?;
-            item::run(&item::ItemCommand::RmItem { task_id, index }, &store, json_output)
-        }
+
         Commands::Summary { task_id } => {
             let store = TaskStore::new(data_dir)?;
             item::run(&item::ItemCommand::Summary { task_id }, &store, json_output)

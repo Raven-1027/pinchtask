@@ -31,15 +31,14 @@ mcp-pinchtask
 │   new "描述" [-c "上下文"]                  创建任务
 │   ls [-a] [-l] [-d] [-n 10] [--sort time|priority]  列出任务
 │   show <id>                                查看任务详情
-│   edit <id> [-d "描述"] [-c "上下文"]        编辑任务（合并原 update + context）
-│   rm <id>                                  删除任务
+│   edit <id> [index] [-d "描述"] [-c "上下文"] [-t "标题"] [-p "计划"] [--done|--undone]
+│                                            编辑任务（无 index）或清单条目（有 index）
+│   rm <id> [index]                          删除任务（无 index）或清单条目（有 index）
 │
 ├── 清单（默认操作对象，提升为顶层）────────────────
 │   add <id> "标题" [-d "描述"] [-p "计划"]    添加清单项
 │   check <id> <index>                       toggle 完成/未完成
-│   edit-item <id> <index> [-t "标题"] [-d "描述"] [-p "计划"] [--done|--undone]  编辑清单项
 │   mv <id> <from> <to>                     移动清单项
-│   rm-item <id> <index>                    删除清单项
 │   summary <id>                            清单进度摘要
 │
 ├── 其他维度 ─────────────────────────────────────
@@ -53,7 +52,7 @@ mcp-pinchtask
 │
 └── 全局选项
     --json          JSON 格式输出
-    --data-dir      数据目录路径
+    -D / --data-dir 数据目录路径
     -v / --verbose  详细日志
     -q / --quiet    安静模式
 ```
@@ -181,8 +180,8 @@ mcp-pinchtask link 8c7b04 --name "JWT文档" --url "https://jwt.io"
 | `checklist add <id> "标题"` | `add [id] "标题"` | 去掉 checklist 前缀 |
 | `checklist done <id> <i>` | `check [id] <i>` | done → check（toggle 语义） |
 | `checklist undone <id> <i>` | `check [id] <i>` | 合并（toggle 自动处理） |
-| `checklist update <id> <i> -t "..."` | `edit-item [id] <i> -t "..."` | 去掉 checklist 前缀 |
-| `checklist remove <id> <i>` | `rm-item [id] <i>` | 去掉 checklist 前缀 |
+| `checklist update <id> <i> -t "..."` | `edit <id> <i> -t "..."` | 合并到 edit，index 可选 |
+| `checklist remove <id> <i>` | `rm <id> <i>` | 合并到 rm，index 可选 |
 | `checklist reorder <id> <from> <to>` | `mv [id] <from> <to>` | reorder → mv |
 | `checklist summary <id>` | `summary [id]` | 去掉 checklist 前缀 |
 | `note add <id> "内容"` | `note [id] "内容"` | 去掉 add |
