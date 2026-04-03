@@ -80,6 +80,7 @@ pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
     // ── 创建应用状态与事件总线 ─────────────────────────────────────────
     let mut app = App::new(data_dir);
     let mut event_bus = EventBus::new();
+    app.set_action_tx(event_bus.sender());
 
     // ── 启动时加载任务列表 ─────────────────────────────────────────────
     if let Err(e) = app.load_tasks().await {
