@@ -126,6 +126,8 @@ enum Commands {
     Tag(meta::TagArgs),
     /// 添加资源引用
     Link(resource::LinkArgs),
+    /// 启动交互式 TUI 界面
+    Tui,
     /// 启动 MCP 服务器（stdio 传输）
     Serve,
     /// 生成 shell 补全脚本
@@ -150,9 +152,10 @@ pub async fn run() -> Result<()> {
         }
     };
 
-    // Serve 和 Completion 不需要 TaskStore，直接处理
+    // Serve、Tui 和 Completion 不需要 TaskStore，直接处理
     match command {
         Commands::Serve => return server::run(data_dir).await,
+        Commands::Tui => return crate::tui::run(data_dir).await,
         Commands::Completion(args) => {
             let mut cmd = Cli::command();
             generate(args.shell, &mut cmd, "pinchtask", &mut io::stdout());
@@ -201,6 +204,6 @@ pub async fn run() -> Result<()> {
         Commands::Tag(args) => meta::run_tag(args, &store, json).await,
         Commands::Link(args) => resource::run_link(args, &store, json).await,
         // 已在上方 match 中提前返回，不会到达
-        Commands::Serve | Commands::Completion(_) => unreachable!(),
+        Commands::Serve | Commands::Tui | Commands::Completion(_) => unreachable!(),
     }
 }

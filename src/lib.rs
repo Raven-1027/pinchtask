@@ -10,3 +10,4 @@ pub mod models;
 pub mod server;
 pub mod store;
 pub mod tools;
+pub mod tui;
