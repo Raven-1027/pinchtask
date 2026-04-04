@@ -84,12 +84,14 @@ impl<'a> Widget for TaskDetail<'a> {
         // 上下文
         if let Some(ref ctx) = self.task.context_for_all_tasks {
             let ctx_lines = wrap_text(ctx, total_width.saturating_sub(10));
-            lines.push(Line::from(vec![
-                Span::styled(" 上下文: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&ctx_lines[0], Style::default().fg(Color::White)),
-            ]));
-            for extra_line in ctx_lines.iter().skip(1) {
-                lines.push(Line::from(format!("         {extra_line}")));
+            if let Some(first) = ctx_lines.first() {
+                lines.push(Line::from(vec![
+                    Span::styled(" 上下文: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(first.clone(), Style::default().fg(Color::White)),
+                ]));
+                for extra_line in ctx_lines.iter().skip(1) {
+                    lines.push(Line::from(format!("         {extra_line}")));
+                }
             }
         }
 
@@ -117,7 +119,7 @@ impl<'a> Widget for TaskDetail<'a> {
                     let tags_str = tags.join(", ");
                     lines.push(Line::from(vec![
                         Span::styled(" 标签:   ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(&tags_str, Style::default().fg(Color::Magenta)),
+                        Span::styled(tags_str, Style::default().fg(Color::Magenta)),
                     ]));
                 }
             }
@@ -218,7 +220,7 @@ impl<'a> Widget for TaskDetail<'a> {
                     if !item.detailed_description.is_empty() {
                         let desc_lines =
                             wrap_text(&item.detailed_description, total_width.saturating_sub(8));
-                        for dl in &desc_lines {
+                        for dl in desc_lines {
                             lines.push(Line::from(vec![
                                 Span::styled("       ", Style::default()),
                                 Span::styled(
@@ -230,7 +232,7 @@ impl<'a> Widget for TaskDetail<'a> {
                     }
                     if let Some(ref plan) = item.context_and_plan {
                         let plan_lines = wrap_text(plan, total_width.saturating_sub(8));
-                        for pl in &plan_lines {
+                        for pl in plan_lines {
                             lines.push(Line::from(vec![
                                 Span::styled("       ", Style::default()),
                                 Span::styled(
@@ -270,7 +272,7 @@ impl<'a> Widget for TaskDetail<'a> {
             for (i, note) in self.task.notes.iter().enumerate() {
                 let note_width = total_width.saturating_sub(8);
                 let wrapped = wrap_text(note, note_width);
-                for (li, line) in wrapped.iter().enumerate() {
+                for (li, line) in wrapped.into_iter().enumerate() {
                     if li == 0 {
                         lines.push(Line::from(vec![
                             Span::styled(

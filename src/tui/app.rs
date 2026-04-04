@@ -13,6 +13,21 @@ use crate::store::TaskStore;
 
 use super::event::{Action, AppEvent};
 
+// ── 输入模式 ───────────────────────────────────────────────────────────────
+
+/// 清单条目输入模式。
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputMode {
+    /// 正常模式（键盘导航）
+    Normal,
+    /// 添加新条目（行内输入）
+    AddingItem,
+    /// 编辑当前条目名称（行内输入）
+    EditingItemName,
+    /// 编辑当前条目描述（行内输入）
+    EditingItemDesc,
+}
+
 // ── 视图枚举 ───────────────────────────────────────────────────────────────
 
 /// TUI 当前激活的视图。
@@ -99,6 +114,14 @@ pub struct App {
     /// 是否显示删除确认对话框
     confirm_delete: bool,
 
+    // ── 清单交互状态 ────────────────────────────────────────────────
+    /// 清单条目当前焦点索引
+    selected_item_index: usize,
+    /// 输入模式
+    input_mode: InputMode,
+    /// 行内输入缓冲区
+    input_buffer: String,
+
     // ── 生命周期与消息 ──────────────────────────────────────────────────
     /// 退出标志
     should_quit: bool,
@@ -128,6 +151,9 @@ impl App {
             search_query: None,
             search_mode: false,
             confirm_delete: false,
+            selected_item_index: 0,
+            input_mode: InputMode::Normal,
+            input_buffer: String::new(),
             should_quit: false,
             message: None,
             error_message: None,
@@ -195,6 +221,21 @@ impl App {
     /// 获取滚动偏移量。
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
+    }
+
+    /// 获取清单条目当前焦点索引。
+    pub fn selected_item_index(&self) -> usize {
+        self.selected_item_index
+    }
+
+    /// 获取当前输入模式。
+    pub fn input_mode(&self) -> &InputMode {
+        &self.input_mode
+    }
+
+    /// 获取输入缓冲区内容。
+    pub fn input_buffer(&self) -> &str {
+        &self.input_buffer
     }
 
     // ── 事件发送端 ────────────────────────────────────────────────────────
@@ -468,6 +509,12 @@ impl App {
                     self.handle_task_list_key(key)?;
                 }
             }
+            _ if self.view == View::TaskDetail => {
+                match &self.input_mode {
+                    InputMode::Normal => self.handle_task_detail_key(key)?,
+                    _ => self.handle_input_key(key),
+                }
+            }
             _ => {}
         }
 
@@ -600,7 +647,186 @@ impl App {
         Ok(())
     }
 
-    /// 根据选中索引调整滚动偏移量。
+    /// 异步切换清单条目完成状态。
+    pub fn spawn_toggle_item(&mut self, task_id: String, item_index: usize, currently_done: bool) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                let result = if currently_done {
+                    crate::core::mark_task_undone(&store, &task_id, item_index).await
+                } else {
+                    crate::core::mark_task_done(&store, &task_id, item_index).await
+                };
+                match result {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemToggled(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("切换条目状态失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步添加清单条目。
+    pub fn spawn_add_item(&mut self, task_id: String, item_name: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::add_checklist_item(
+                    &store, &task_id, &item_name, "", None,
+                ).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemAdded(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("添加条目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步删除清单条目。
+    pub fn spawn_remove_item(&mut self, task_id: String, item_index: usize) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::remove_checklist_item(&store, &task_id, item_index).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemRemoved(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("删除条目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步编辑清单条目名称。
+    pub fn spawn_edit_item_name(&mut self, task_id: String, item_index: usize, new_name: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::update_checklist_item(
+                    &store, &task_id, item_index, Some(&new_name), None, None, None,
+                ).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemEdited(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("编辑条目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步编辑清单条目描述。
+    pub fn spawn_edit_item_desc(&mut self, task_id: String, item_index: usize, new_desc: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::update_checklist_item(
+                    &store, &task_id, item_index, None, Some(&new_desc), None, None,
+                ).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemEdited(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("编辑条目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步重排清单条目。
+    pub fn spawn_reorder_item(&mut self, task_id: String, from_index: usize, to_index: usize) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::reorder_checklist_item(&store, &task_id, from_index, to_index).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ItemReordered(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("移动条目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    // ── 排序与过滤 ──────────────────────────────────────────────────────
     fn adjust_scroll(&mut self) {
         // 简单实现：如果选中项超出可视范围，调整偏移
         // 具体 visible_height 在渲染时确定，这里用保守值 20
@@ -609,6 +835,156 @@ impl App {
             self.scroll_offset = self.selected_index;
         } else if self.selected_index >= self.scroll_offset + visible_height {
             self.scroll_offset = self.selected_index - visible_height + 1;
+        }
+    }
+
+    /// 任务详情视图的键盘处理（正常模式）。
+    fn handle_task_detail_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        let item_count = self
+            .current_task
+            .as_ref()
+            .map(|t| t.checklist.len())
+            .unwrap_or(0);
+
+        // Ctrl+J / Ctrl+K 上下移动条目顺序
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            if let Some(task) = &self.current_task {
+                let task_id = task.id.clone();
+                match key.code {
+                    KeyCode::Char('j') => {
+                        // 向下移动：from -> from+1
+                        if self.selected_item_index < item_count.saturating_sub(1) {
+                            let from = self.selected_item_index;
+                            let to = from + 1;
+                            self.spawn_reorder_item(task_id, from, to);
+                            self.selected_item_index = to;
+                        }
+                        return Ok(());
+                    }
+                    KeyCode::Char('k') => {
+                        // 向上移动：from -> from-1
+                        if self.selected_item_index > 0 {
+                            let from = self.selected_item_index;
+                            let to = from - 1;
+                            self.spawn_reorder_item(task_id, from, to);
+                            self.selected_item_index = to;
+                        }
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        match key.code {
+            // 上下移动焦点
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.selected_item_index > 0 {
+                    self.selected_item_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if item_count > 0 && self.selected_item_index < item_count - 1 {
+                    self.selected_item_index += 1;
+                }
+            }
+            // Space/x 切换完成状态
+            KeyCode::Char(' ') | KeyCode::Char('x') => {
+                if let Some(task) = &self.current_task {
+                    if let Some(item) = task.checklist.get(self.selected_item_index) {
+                        let task_id = task.id.clone();
+                        let idx = self.selected_item_index;
+                        let done = item.done;
+                        self.spawn_toggle_item(task_id, idx, done);
+                    }
+                }
+            }
+            // a 键进入添加条目模式
+            KeyCode::Char('a') => {
+                self.input_mode = InputMode::AddingItem;
+                self.input_buffer.clear();
+                self.message = Some("输入条目名称，Enter 确认，Esc 取消".to_owned());
+            }
+            // e 键编辑当前条目名称
+            KeyCode::Char('e') => {
+                if let Some(task) = &self.current_task {
+                    if let Some(item) = task.checklist.get(self.selected_item_index) {
+                        self.input_mode = InputMode::EditingItemName;
+                        self.input_buffer = item.task.clone();
+                        self.message = Some("编辑条目名称，Enter 确认，Esc 取消".to_owned());
+                    }
+                }
+            }
+            // d 键删除当前条目
+            KeyCode::Char('d') => {
+                if let Some(task) = &self.current_task {
+                    if !task.checklist.is_empty() {
+                        let task_id = task.id.clone();
+                        let idx = self.selected_item_index;
+                        let new_count = task.checklist.len().saturating_sub(1);
+                        self.spawn_remove_item(task_id, idx);
+                        // 调整索引
+                        if new_count > 0 && self.selected_item_index >= new_count {
+                            self.selected_item_index = new_count - 1;
+                        } else if new_count == 0 {
+                            self.selected_item_index = 0;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// 输入模式下的键盘处理。
+    fn handle_input_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        match key.code {
+            KeyCode::Esc => {
+                self.input_mode = InputMode::Normal;
+                self.input_buffer.clear();
+                self.message = None;
+            }
+            KeyCode::Enter => {
+                let name = self.input_buffer.trim().to_owned();
+                if name.is_empty() {
+                    self.input_mode = InputMode::Normal;
+                    self.input_buffer.clear();
+                    self.message = Some("条目名称不能为空".to_owned());
+                    return;
+                }
+                if let Some(task) = &self.current_task {
+                    let task_id = task.id.clone();
+                    match &self.input_mode {
+                        InputMode::AddingItem => {
+                            self.spawn_add_item(task_id, name);
+                        }
+                        InputMode::EditingItemName => {
+                            let idx = self.selected_item_index;
+                            self.spawn_edit_item_name(task_id, idx, name);
+                        }
+                        InputMode::EditingItemDesc => {
+                            let idx = self.selected_item_index;
+                            self.spawn_edit_item_desc(task_id, idx, name);
+                        }
+                        InputMode::Normal => unreachable!(),
+                    }
+                }
+                self.input_mode = InputMode::Normal;
+                self.input_buffer.clear();
+            }
+            KeyCode::Backspace => {
+                self.input_buffer.pop();
+            }
+            KeyCode::Char(c) => {
+                self.input_buffer.push(c);
+            }
+            _ => {}
         }
     }
 
@@ -622,6 +998,7 @@ impl App {
                 self.error_message = None;
             }
             Action::TaskDetailLoaded(task) => {
+                self.selected_item_index = 0;
                 self.current_task = Some(task);
                 self.view = View::TaskDetail;
                 self.error_message = None;
