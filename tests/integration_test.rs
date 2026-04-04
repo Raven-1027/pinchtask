@@ -53,16 +53,13 @@ async fn test_get_info_returns_correct_server_info() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_all_12_tools_registered() {
+async fn test_all_9_tools_registered() {
     let (server, _dir) = test_server().await;
 
     let expected_tools = [
         "initialize_task",
         "update_task",
-        "add_checklist_item",
-        "update_checklist_item",
-        "reorder_checklist_item",
-        "remove_checklist_item",
+        "manage_checklist_item",
         "add_note",
         "add_resource",
         "get_checklist_summary",
@@ -98,7 +95,7 @@ async fn test_tool_schemas_are_valid() {
     for name in [
         "initialize_task",
         "update_task",
-        "add_checklist_item",
+        "manage_checklist_item",
         "list_tasks",
     ] {
         let tool = server.get_tool(name).expect("工具应存在");
@@ -108,10 +105,13 @@ async fn test_tool_schemas_are_valid() {
             schema_value.is_object(),
             "工具 '{name}' 的 inputSchema 应为 object"
         );
-        assert!(
-            schema_value.get("type").is_some(),
-            "工具 '{name}' 的 inputSchema 应包含 type 字段"
-        );
+        // manage_checklist_item 使用 tagged enum，schema 为 oneOf 结构，无顶层 type 字段
+        if name != "manage_checklist_item" {
+            assert!(
+                schema_value.get("type").is_some(),
+                "工具 '{name}' 的 inputSchema 应包含 type 字段"
+            );
+        }
     }
 }
 
@@ -213,7 +213,7 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 添加检查项
     let result = server
-        .add_checklist_item(Parameters(AddChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Add {
             task_id: task_id.clone(),
             task: "步骤一".to_owned(),
             detailed_description: "完成第一步操作".to_owned(),
@@ -231,7 +231,7 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 标记完成
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
             task: None,
@@ -313,7 +313,7 @@ async fn test_mark_done_and_get_summary() {
 
     // 标记第一个完成
     server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
             task: None,
@@ -502,7 +502,7 @@ async fn test_clear_task_deletes_task() {
 
     // 后续操作该任务应返回错误
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
             task: None,
@@ -558,7 +558,7 @@ async fn test_reorder_checklist_item() {
 
     // 把 index 0 移到 index 2
     let result = server
-        .reorder_checklist_item(Parameters(ReorderChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Reorder {
             task_id: task_id.clone(),
             from_index: 0,
             to_index: 2,
@@ -609,7 +609,7 @@ async fn test_remove_checklist_item() {
     let task_id = task["id"].as_str().unwrap().to_owned();
 
     let result = server
-        .remove_checklist_item(Parameters(RemoveChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Remove {
             task_id: task_id.clone(),
             index: 1,
         }))
@@ -794,7 +794,7 @@ async fn test_mark_undone() {
     assert_eq!(task["checklist"][0]["done"], true);
 
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
             task: None,
@@ -836,7 +836,7 @@ async fn test_update_checklist_item_partial() {
 
     // 只更新 task 名称
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
             task: Some("新名称".to_owned()),
@@ -858,7 +858,7 @@ async fn test_update_checklist_item_partial() {
 
     // 用 null 清空 context_and_plan
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
             task: None,

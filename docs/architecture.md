@@ -129,7 +129,7 @@ Task
 ```
 客户端 → StdioTransport → McpServer::handle_request()
        → McpServer::handle_tools_call()
-       → task_tools::update_checklist_item_handler(store, args)
+       → task_tools::manage_checklist_item_handler(store, args)
        → core::update_checklist_item(store, task_id, index, ...)
        → store.get_task(task_id).await
        → task.checklist[index].done = true

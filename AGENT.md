@@ -103,16 +103,13 @@ pinchtask/
 
 ## 核心功能
 
-### MCP 工具（12 个）
+### MCP 工具（9 个）
 
 | 工具名                     | 功能                                        |
 | -------------------------- | ------------------------------------------- |
 | `initialize_task`          | 创建新任务（支持初始清单/笔记/资源/元数据） |
 | `update_task`              | 统一更新多个任务字段                        |
-| `add_checklist_item`       | 添加清单条目                                |
-| `update_checklist_item`    | 更新清单条目                                |
-| `reorder_checklist_item`   | 移动条目顺序                                |
-| `remove_checklist_item`    | 删除清单条目                                |
+| `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）|
 | `add_note`                 | 添加笔记                                    |
 | `add_resource`             | 添加资源引用                                |
 | `get_checklist_summary`    | 获取清单进度摘要                            |
@@ -154,7 +151,7 @@ Task {
 - 完整的 MCP 服务器实现（stdio 传输，JSON-RPC 2.0）
 - 完整的 CLI 命令行工具
 - 核心业务逻辑层解耦
-- 17 个 MCP 工具全部注册
+- 9 个 MCP 工具全部注册
 - 存储层从 JSON 文件迁移到 SQLite + sqlx（异步）
 - 75 个测试全部通过（66 单元测试 + 9 集成测试）
 - 双格式 stdio 传输（换行分隔 JSON + Content-Length 头）

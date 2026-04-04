@@ -231,86 +231,73 @@ impl PinchTaskServer {
 
 
     // ------------------------------------------------------------------
-    // 5. add_checklist_item
+    // 5. manage_checklist_item
     // ------------------------------------------------------------------
     #[tool(
-        name = "add_checklist_item",
-        description = "Add a new item to the task checklist. Usage: Provide detailed_description to record what needs to be done and context_and_plan to capture the approach. New items are appended to the end of the checklist."
+        name = "manage_checklist_item",
+        description = "Perform operations on checklist items. Select the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations."
     )]
-    pub async fn add_checklist_item(
+    pub async fn manage_checklist_item(
         &self,
-        Parameters(params): Parameters<AddChecklistItemParams>,
+        Parameters(params): Parameters<ManageChecklistItemParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        core::add_checklist_item(
-            &self.store,
-            &params.task_id,
-            &params.task,
-            &params.detailed_description,
-            params.context_and_plan.as_deref(),
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 6. update_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "update_checklist_item",
-        description = "Update an existing checklist item, including marking it done or undone. Usage: Only specified fields are modified. Set done=true to mark completed, done=false to revert. Note: omitting context_and_plan keeps the original value, while passing null clears it. Use index (0-based) to identify the item."
-    )]
-    pub async fn update_checklist_item(
-        &self,
-        Parameters(params): Parameters<UpdateChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::update_checklist_item(
-            &self.store,
-            &params.task_id,
-            params.index as usize,
-            params.task.as_deref(),
-            params.detailed_description.as_deref(),
-            params.context_and_plan.as_ref().map(|o| o.as_deref()),
-            params.done,
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 9. reorder_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "reorder_checklist_item",
-        description = "Move a checklist item to a new position. Usage: Use to prioritize sub-tasks by moving important items to lower indices. Note: after reordering, item indices change—refresh the task data before further index-based operations."
-    )]
-    pub async fn reorder_checklist_item(
-        &self,
-        Parameters(params): Parameters<ReorderChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::reorder_checklist_item(
-            &self.store,
-            &params.task_id,
-            params.from_index as usize,
-            params.to_index as usize,
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 10. remove_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "remove_checklist_item",
-        description = "Remove a checklist item from the task. Usage: Use when a sub-task is no longer needed. Warning: after removal, subsequent item indices shift down by 1. Refresh task data before further index-based operations."
-    )]
-    pub async fn remove_checklist_item(
-        &self,
-        Parameters(params): Parameters<RemoveChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::remove_checklist_item(&self.store, &params.task_id, params.index as usize)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
+        match params {
+            ManageChecklistItemParams::Add {
+                task_id,
+                task,
+                detailed_description,
+                context_and_plan,
+            } => {
+                core::add_checklist_item(
+                    &self.store,
+                    &task_id,
+                    &task,
+                    &detailed_description,
+                    context_and_plan.as_deref(),
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Update {
+                task_id,
+                index,
+                task,
+                detailed_description,
+                context_and_plan,
+                done,
+            } => {
+                core::update_checklist_item(
+                    &self.store,
+                    &task_id,
+                    index as usize,
+                    task.as_deref(),
+                    detailed_description.as_deref(),
+                    context_and_plan.as_ref().map(|o| o.as_deref()),
+                    done,
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Reorder {
+                task_id,
+                from_index,
+                to_index,
+            } => {
+                core::reorder_checklist_item(
+                    &self.store,
+                    &task_id,
+                    from_index as usize,
+                    to_index as usize,
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Remove { task_id, index } => {
+                core::remove_checklist_item(&self.store, &task_id, index as usize)
+                    .await
+                    .into_tool_result(|t| task_to_result(&t))
+            }
+        }
     }
 
     // ------------------------------------------------------------------

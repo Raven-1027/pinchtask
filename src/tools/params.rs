@@ -124,64 +124,64 @@ pub struct UpdateTaskParams {
     pub eta: Option<String>,
 }
 
-/// `add_checklist_item` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddChecklistItemParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "A short yet comprehensive name for the task")]
-    pub task: String,
-    #[schemars(description = "A longer description about what we want to achieve")]
-    pub detailed_description: String,
-    #[serde(default)]
-    #[schemars(description = "Related information and a detailed plan")]
-    pub context_and_plan: Option<String>,
-}
-
-/// `update_checklist_item` 参数。
+/// `manage_checklist_item` 参数。
 ///
-/// 注意 `context_and_plan` 使用 `Option<Option<String>>`：
-/// - 字段未传入 → `None` → 不修改
-/// - 传入 `null` → `Some(None)` → 清空
-/// - 传入字符串 → `Some(Some("..."))` → 更新
+/// 使用 serde internally tagged enum，每个 action 有独立的参数 schema。
+/// agent 通过 `action` 字段选择操作类型。
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateChecklistItemParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "0-based index of the checklist item to update")]
-    pub index: u64,
-    #[serde(default)]
-    #[schemars(description = "New short name")]
-    pub task: Option<String>,
-    #[serde(default)]
-    #[schemars(description = "New detailed description")]
-    pub detailed_description: Option<String>,
-    #[serde(default)]
-    #[schemars(description = "New context and plan (pass null to clear)")]
-    pub context_and_plan: Option<Option<String>>,
-    #[serde(default)]
-    #[schemars(description = "Whether the item is completed")]
-    pub done: Option<bool>,
-}
-
-/// `reorder_checklist_item` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ReorderChecklistItemParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "Current 0-based index")]
-    pub from_index: u64,
-    #[schemars(description = "New 0-based index")]
-    pub to_index: u64,
-}
-
-/// `remove_checklist_item` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct RemoveChecklistItemParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "0-based index of the checklist item to remove")]
-    pub index: u64,
+#[serde(tag = "action")]
+pub enum ManageChecklistItemParams {
+    /// Append a new checklist item to the end of the checklist.
+    Add {
+        #[schemars(description = "The ID of the task")]
+        task_id: String,
+        #[schemars(description = "A short yet comprehensive name for the item")]
+        task: String,
+        #[schemars(description = "A longer description about what we want to achieve")]
+        detailed_description: String,
+        #[serde(default)]
+        #[schemars(description = "Related information and a detailed plan")]
+        context_and_plan: Option<String>,
+    },
+    /// Update fields of an existing checklist item. Only specified fields are modified.
+    /// Set done=true to mark completed, done=false to mark undone.
+    Update {
+        #[schemars(description = "The ID of the task")]
+        task_id: String,
+        #[schemars(description = "0-based index of the checklist item to update")]
+        index: u64,
+        #[serde(default)]
+        #[schemars(description = "New short name")]
+        task: Option<String>,
+        #[serde(default)]
+        #[schemars(description = "New detailed description")]
+        detailed_description: Option<String>,
+        /// 三态语义：字段未传入 → `None` → 不修改；传入 `null` → `Some(None)` → 清空；传入字符串 → `Some(Some("..."))` → 更新。
+        #[serde(default)]
+        #[schemars(description = "New context and plan (pass null to clear)")]
+        context_and_plan: Option<Option<String>>,
+        #[serde(default)]
+        #[schemars(description = "Whether the item is completed")]
+        done: Option<bool>,
+    },
+    /// Move a checklist item to a new position.
+    /// After reordering, item indices change — refresh task data before further index-based operations.
+    Reorder {
+        #[schemars(description = "The ID of the task")]
+        task_id: String,
+        #[schemars(description = "Current 0-based index")]
+        from_index: u64,
+        #[schemars(description = "New 0-based index")]
+        to_index: u64,
+    },
+    /// Remove a checklist item from the task.
+    /// After removal, subsequent item indices shift down by 1.
+    Remove {
+        #[schemars(description = "The ID of the task")]
+        task_id: String,
+        #[schemars(description = "0-based index of the checklist item to remove")]
+        index: u64,
+    },
 }
 
 /// `add_note` 参数。
