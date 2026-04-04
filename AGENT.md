@@ -22,7 +22,8 @@
 | uuid               | 1.x (v4) | 任务/条目 ID 生成                          |
 | chrono             | 0.4.x    | 时间戳处理                                 |
 | tracing            | 0.1.x    | 日志框架                                   |
-| rmcp               | 1.3.0    | MCP 协议参考（未直接使用，自行实现协议层） |
+| rmcp               | 1.3.0    | MCP 协议实现（`#[tool]` 宏、ServerHandler、ToolRouter） |
+| schemars           | 1.2.1    | JSON Schema 自动生成（MCP 工具 inputSchema） |
 | sqlx               | 0.8      | SQLite 异步数据库驱动                      |
 | ratatui            | 0.29     | TUI 框架（终端 UI 渲染）                    |
 | crossterm          | 0.28     | 终端控制（raw mode、事件、光标）            |
@@ -48,8 +49,10 @@ pinchtask/
 │   │   └── types.rs         # Request/Response/ToolDefinition 等
 │   ├── transport/           # stdio 传输层
 │   │   └── mod.rs           # 换行分隔 JSON + Content-Length 双格式支持
-│   ├── tools/               # MCP 工具适配层
-│   │   └── task.rs          # 参数解析 → core 调用 → 结果封装
+│   ├── tools/               # MCP 工具参数定义与测试
+│   │   ├── mod.rs           # 模块入口
+│   │   ├── params.rs        # 工具参数结构体 + json_schema_for() 内联 $ref
+│   │   └── task.rs          # core 层单元测试
 │   ├── tui/                 # 交互式终端界面
 │   │   ├── mod.rs           # TUI 入口（终端初始化、主循环）
 │   │   ├── app.rs           # 应用状态管理、事件处理
@@ -165,7 +168,8 @@ Task {
 - 9 个 MCP 工具全部注册
 - 存储层从 JSON 文件迁移到 SQLite + sqlx（异步）
 - 完整的交互式 TUI 界面（ratatui + crossterm），支持任务列表、详情、创建/编辑表单
-- 75 个测试全部通过（66 单元测试 + 9 集成测试）
+- 145 个测试（142 通过 + 3 个 TUI theme 预存失败）
+- tools/params 模块包含 6 个 schema 内联验证测试
 - TUI 模块包含 55+ 个单元测试（FormField、SortMode、TaskFormState、主题函数）
 - 双格式 stdio 传输（换行分隔 JSON + Content-Length 头）
 - 短 ID 前缀匹配
@@ -174,7 +178,30 @@ Task {
 
 ### ⚠️ 已知问题
 
-无
+- 3 个 TUI theme 测试失败（`progress_bar_plain_length`、`separator_length`、`separator_minimum_length`），与功能逻辑无关，属预存问题
+
+## 开发注意事项
+
+### MCP 工具 Schema：禁止 `$ref` 引用
+
+rmcp 的 `#[tool]` 宏默认使用 `schema_for_type::<T>()` 生成 inputSchema，该函数内部硬编码 `SchemaSettings::draft2020_12()` 且 `inline_subschemas = false`，会导致嵌套的自定义类型（struct/enum）被放入 `$defs` 并通过 `$ref` 引用。**多数 MCP 客户端不支持 JSON Schema 引用解析**，看到 `{"$ref": "..."}` 后无法展开实际字段。
+
+**规则**：如果工具参数类型中包含嵌套的自定义 struct 或 enum（如 `Option<Vec<ChecklistItemInput>>`、`Action` 枚举），**必须**在 `#[tool]` 宏中显式指定 `input_schema` 属性，使用 `tools::params::json_schema_for::<T>()` 生成完全内联的 schema。
+
+```rust
+// ❌ 错误：嵌套类型会产生 $ref
+#[tool(name = "my_tool", description = "...")]
+pub async fn my_tool(&self, Parameters(p): Parameters<MyParams>) -> ... { ... }
+
+// ✅ 正确：显式指定内联 schema
+#[tool(name = "my_tool", description = "...",
+       input_schema = crate::tools::params::json_schema_for::<MyParams>())]
+pub async fn my_tool(&self, Parameters(p): Parameters<MyParams>) -> ... { ... }
+```
+
+仅包含基础类型（`String`、`bool`、`u64`、`Option<String>` 等）的工具参数无需此处理，rmcp 默认生成的 schema 不会有 `$ref`。
+
+当前需要显式指定 `input_schema` 的工具：`new_task`（含 `InitialChecklistItem`、`ResourceInput`、`TaskMetadataInput`）、`manage_checklist_item`（含 `Action` 枚举）。
 
 ### 🔧 待办/改进方向
 
