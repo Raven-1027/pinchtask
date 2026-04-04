@@ -142,13 +142,13 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     } else {
         let hints = match app.view() {
             View::TaskList => {
-                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r 刷新  / 搜索  Tab 排序  ? 帮助  q 退出"
+                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r/Ctrl+R 刷新  / 搜索  Tab 排序  ? 帮助  q 退出"
             }
             View::TaskDetail => {
                 if app.input_mode() != &InputMode::Normal {
                     " Enter 确认  Esc 取消  Backspace 删除"
                 } else {
-                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除条目  N 添加笔记  D 删除笔记  L 添加资源  Ctrl+J/K 移动顺序  Esc 返回"
+                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除条目  N 添加笔记  D 删除笔记  L 添加资源  Ctrl+D 删除任务  Ctrl+J/K 移动顺序  Esc 返回"
                 }
             }
             View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
@@ -554,7 +554,7 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
             Span::raw("    删除选中任务"),
         ]),
         Line::from(vec![
-            Span::styled("    r        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    r/Ctrl+R ", Style::default().fg(Color::Yellow)),
             Span::raw("    刷新任务列表"),
         ]),
         Line::from(vec![
@@ -599,6 +599,10 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         Line::from(vec![
             Span::styled("    L        ", Style::default().fg(Color::Yellow)),
             Span::raw("    添加资源链接"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Ctrl+D   ", Style::default().fg(Color::Yellow)),
+            Span::raw("    删除当前任务（需确认）"),
         ]),
         Line::from(vec![
             Span::styled("    Esc/←    ", Style::default().fg(Color::Yellow)),
@@ -660,10 +664,15 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
     // 清除背景区域
     f.render_widget(Clear, dialog_area);
 
+    // 根据当前视图确定要显示的任务名称
     let task_name = app
-        .filtered_and_sorted_tasks()
-        .get(app.selected_index())
+        .current_task()
         .map(|t| truncate_str(&t.task_description, 30))
+        .or_else(|| {
+            app.filtered_and_sorted_tasks()
+                .get(app.selected_index())
+                .map(|t| truncate_str(&t.task_description, 30))
+        })
         .unwrap_or_default();
 
     let lines = vec![

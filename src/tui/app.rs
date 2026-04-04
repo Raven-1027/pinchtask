@@ -747,8 +747,10 @@ impl App {
                 }
             }
             _ if self.view == View::TaskDetail => {
-                // 笔记删除确认对话框优先处理
-                if self.confirm_delete_note {
+                // 任务删除确认对话框优先处理
+                if self.confirm_delete {
+                    self.handle_delete_confirm_key(key);
+                } else if self.confirm_delete_note {
                     self.handle_delete_note_confirm_key(key);
                 } else {
                     match &self.input_mode {
@@ -806,12 +808,17 @@ impl App {
 
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                // 确认删除
-                if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
-                    let task_id = task.id.clone();
+                // 确认删除：优先使用 current_task（详情视图），其次用列表选中项
+                let task_id = if let Some(task) = &self.current_task {
+                    task.id.clone()
+                } else if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
+                    task.id.clone()
+                } else {
                     self.confirm_delete = false;
-                    self.spawn_delete_task(task_id);
-                }
+                    return;
+                };
+                self.confirm_delete = false;
+                self.spawn_delete_task(task_id);
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 self.confirm_delete = false;
@@ -842,7 +849,13 @@ impl App {
 
     /// 任务列表视图的键盘处理。
     fn handle_task_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
-        use crossterm::event::KeyCode;
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        // Ctrl+R 刷新列表
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+            self.spawn_load_tasks();
+            return Ok(());
+        }
 
         let filtered_count = self.filtered_and_sorted_tasks().len();
 
@@ -1198,33 +1211,42 @@ impl App {
             .map(|t| t.checklist.len())
             .unwrap_or(0);
 
-        // Ctrl+J / Ctrl+K 上下移动条目顺序
+        // Ctrl 组合键
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            if let Some(task) = &self.current_task {
-                let task_id = task.id.clone();
-                match key.code {
-                    KeyCode::Char('j') => {
-                        // 向下移动：from -> from+1
+            match key.code {
+                // Ctrl+D 删除当前任务
+                KeyCode::Char('d') => {
+                    if self.current_task.is_some() {
+                        self.confirm_delete = true;
+                    }
+                    return Ok(());
+                }
+                // Ctrl+J / Ctrl+K 上下移动条目顺序
+                KeyCode::Char('j') => {
+                    if let Some(task) = &self.current_task {
+                        let task_id = task.id.clone();
                         if self.selected_item_index < item_count.saturating_sub(1) {
                             let from = self.selected_item_index;
                             let to = from + 1;
                             self.spawn_reorder_item(task_id, from, to);
                             self.selected_item_index = to;
                         }
-                        return Ok(());
                     }
-                    KeyCode::Char('k') => {
-                        // 向上移动：from -> from-1
+                    return Ok(());
+                }
+                KeyCode::Char('k') => {
+                    if let Some(task) = &self.current_task {
+                        let task_id = task.id.clone();
                         if self.selected_item_index > 0 {
                             let from = self.selected_item_index;
                             let to = from - 1;
                             self.spawn_reorder_item(task_id, from, to);
                             self.selected_item_index = to;
                         }
-                        return Ok(());
                     }
-                    _ => {}
+                    return Ok(());
                 }
+                _ => {}
             }
         }
 
@@ -1670,6 +1692,11 @@ impl App {
                 self.error_message = None;
             }
             Action::TaskDeleted(task_id) => {
+                // 如果删除的是当前查看的任务，返回列表视图
+                if self.current_task.as_ref().map_or(false, |t| t.id == task_id) {
+                    self.current_task = None;
+                    self.view = View::TaskList;
+                }
                 self.tasks.retain(|t| t.id != task_id);
                 self.clamp_selected_index();
                 self.message = Some("任务已删除".to_owned());
