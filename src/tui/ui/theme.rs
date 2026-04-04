@@ -96,7 +96,11 @@ pub fn priority_span(priority: &str, width: usize) -> Span<'static> {
     let text = if priority == "-" || priority.is_empty() {
         format!("{:<w$}", "-", w = width)
     } else {
-        format!("{icon} {:<w$}", priority, w = width.saturating_sub(2).max(1))
+        format!(
+            "{icon} {:<w$}",
+            priority,
+            w = width.saturating_sub(2).max(1)
+        )
     };
     Span::styled(text, Style::default().fg(color))
 }
@@ -134,9 +138,7 @@ pub fn normal_style() -> Style {
 
 /// 详情区区块标题样式。
 pub fn section_title_style() -> Style {
-    Style::default()
-        .fg(ACCENT)
-        .add_modifier(Modifier::BOLD)
+    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
 }
 
 /// 详情区标签样式（"ID:", "优先级:" 等前缀）。
@@ -200,7 +202,11 @@ pub fn progress_bar_plain(pct: usize, width: usize) -> String {
     }
     let filled = pct * (width - 2) / 100;
     let empty = (width - 2).saturating_sub(filled);
-    format!("[{}{}]", BAR_FILLED.to_string().repeat(filled), BAR_EMPTY.to_string().repeat(empty))
+    format!(
+        "[{}{}]",
+        BAR_FILLED.to_string().repeat(filled),
+        BAR_EMPTY.to_string().repeat(empty)
+    )
 }
 
 // ── 表头样式 ───────────────────────────────────────────────────────────────
@@ -228,7 +234,9 @@ pub fn separator(width: usize) -> Span<'static> {
 pub fn checkbox_done() -> Span<'static> {
     Span::styled(
         format!(" {} ", ICON_DONE),
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
     )
 }
 
@@ -255,7 +263,9 @@ pub fn checkbox_done_selected() -> Span<'static> {
 pub fn checkbox_pending_selected() -> Span<'static> {
     Span::styled(
         format!(" {} ", ICON_PENDING),
-        Style::default().fg(Color::Indexed(248)).bg(Color::Indexed(236)),
+        Style::default()
+            .fg(Color::Indexed(248))
+            .bg(Color::Indexed(236)),
     )
 }
 
@@ -360,7 +370,7 @@ mod tests {
     #[test]
     fn progress_bar_plain_length() {
         let bar = progress_bar_plain(50, 12);
-        assert_eq!(bar.len(), 12);
+        assert_eq!(bar.chars().count(), 12);
     }
 
     #[test]
@@ -426,14 +436,14 @@ mod tests {
     #[test]
     fn separator_length() {
         let span = separator(20);
-        assert_eq!(span.content.len(), 20);
+        assert_eq!(span.content.chars().count(), 20);
     }
 
     #[test]
     fn separator_minimum_length() {
         // width.max(1) 确保至少 1 个字符
         let span = separator(0);
-        assert_eq!(span.content.len(), 1);
+        assert_eq!(span.content.chars().count(), 1);
     }
 
     #[test]
