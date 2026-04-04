@@ -326,7 +326,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_resource",
-        description = "Add a resource reference to the task. Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references. Resources help maintain traceability to external materials."
+        description = "Add a resource reference to the task (append-only). Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references."
     )]
     pub async fn add_resource(
         &self,
@@ -398,7 +398,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "get_current_task_details",
-        description = "Get details of the first uncompleted task (current task) with full context. Usage: Call to quickly resume work—returns the task context and the first incomplete sub-task's full details (name, description, plan, status). Ideal for session continuity."
+        description = "Get details of the first uncompleted task with full context. Returns the task context and the first incomplete sub-task's full details (name, description, plan, status). Returns error if no uncompleted task exists."
     )]
     pub async fn get_current_task_details(
         &self,
