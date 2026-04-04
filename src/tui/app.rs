@@ -26,6 +26,12 @@ pub enum InputMode {
     EditingItemName,
     /// 编辑当前条目描述（行内输入）
     EditingItemDesc,
+    /// 添加笔记（行内输入）
+    AddingNote,
+    /// 添加资源 — 输入名称（第一步）
+    AddingResourceName,
+    /// 添加资源 — 输入 URL（第二步）
+    AddingResourceUrl,
 }
 
 // ── 表单字段 ─────────────────────────────────────────────────────────────────
@@ -292,8 +298,12 @@ pub struct App {
     search_mode: bool,
 
     // ── 模态对话框 ────────────────────────────────────────────────────
-    /// 是否显示删除确认对话框
+    /// 是否显示删除任务确认对话框
     confirm_delete: bool,
+    /// 是否显示删除笔记确认对话框
+    confirm_delete_note: bool,
+    /// 待删除的笔记索引
+    selected_note_index: usize,
 
     // ── 清单交互状态 ────────────────────────────────────────────────
     /// 清单条目当前焦点索引
@@ -306,6 +316,10 @@ pub struct App {
     // ── 任务表单状态 ──────────────────────────────────────────────────
     /// 当前表单状态（进入 TaskForm 视图时创建）
     form_state: Option<TaskFormState>,
+
+    // ── 资源输入缓冲 ──────────────────────────────────────────────────
+    /// 添加资源时暂存名称（AddingResourceName 完成后保存，AddingResourceUrl 完成后使用）
+    resource_name_buffer: String,
 
     // ── 生命周期与消息 ──────────────────────────────────────────────────
     /// 退出标志
@@ -336,10 +350,13 @@ impl App {
             search_query: None,
             search_mode: false,
             confirm_delete: false,
+            confirm_delete_note: false,
+            selected_note_index: 0,
             selected_item_index: 0,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             form_state: None,
+            resource_name_buffer: String::new(),
             should_quit: false,
             message: None,
             error_message: None,
@@ -427,6 +444,16 @@ impl App {
     /// 获取表单状态引用。
     pub fn form_state(&self) -> Option<&TaskFormState> {
         self.form_state.as_ref()
+    }
+
+    /// 是否显示删除笔记确认对话框。
+    pub fn confirm_delete_note(&self) -> bool {
+        self.confirm_delete_note
+    }
+
+    /// 获取待删除的笔记索引。
+    pub fn selected_note_index(&self) -> usize {
+        self.selected_note_index
     }
 
     // ── 事件发送端 ────────────────────────────────────────────────────────
@@ -677,6 +704,8 @@ impl App {
                     self.view = self.previous_view.clone();
                 } else if self.confirm_delete {
                     self.confirm_delete = false;
+                } else if self.confirm_delete_note {
+                    self.confirm_delete_note = false;
                 } else {
                     self.quit();
                 }
@@ -699,6 +728,8 @@ impl App {
                 }
                 if self.confirm_delete {
                     self.confirm_delete = false;
+                } else if self.confirm_delete_note {
+                    self.confirm_delete_note = false;
                 } else {
                     match self.view {
                         View::Help => self.view = self.previous_view.clone(),
@@ -716,9 +747,14 @@ impl App {
                 }
             }
             _ if self.view == View::TaskDetail => {
-                match &self.input_mode {
-                    InputMode::Normal => self.handle_task_detail_key(key)?,
-                    _ => self.handle_input_key(key),
+                // 笔记删除确认对话框优先处理
+                if self.confirm_delete_note {
+                    self.handle_delete_note_confirm_key(key);
+                } else {
+                    match &self.input_mode {
+                        InputMode::Normal => self.handle_task_detail_key(key)?,
+                        _ => self.handle_input_key(key),
+                    }
                 }
             }
             _ if self.view == View::TaskForm => {
@@ -779,6 +815,26 @@ impl App {
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 self.confirm_delete = false;
+            }
+            _ => {}
+        }
+    }
+
+    /// 笔记删除确认对话框的键盘处理。
+    fn handle_delete_note_confirm_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(task) = &self.current_task {
+                    let task_id = task.id.clone();
+                    let idx = self.selected_note_index;
+                    self.confirm_delete_note = false;
+                    self.spawn_delete_note(task_id, idx);
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.confirm_delete_note = false;
             }
             _ => {}
         }
@@ -1036,6 +1092,90 @@ impl App {
         }
     }
 
+    /// 异步添加笔记。
+    pub fn spawn_add_note(&mut self, task_id: String, content: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::add_note(&store, &task_id, &content).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::NoteAdded(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("添加笔记失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步删除笔记。
+    pub fn spawn_delete_note(&mut self, task_id: String, note_index: usize) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::delete_note(&store, &task_id, note_index).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::NoteDeleted(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("删除笔记失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步添加资源。
+    pub fn spawn_add_resource(&mut self, task_id: String, name: String, url: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::add_resource(&store, &task_id, &name, &url, None).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::ResourceAdded(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("添加资源失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
     // ── 排序与过滤 ──────────────────────────────────────────────────────
     fn adjust_scroll(&mut self) {
         // 简单实现：如果选中项超出可视范围，调整偏移
@@ -1151,6 +1291,28 @@ impl App {
                     }
                 }
             }
+            // N 键（Shift+n）添加笔记
+            KeyCode::Char('N') => {
+                self.input_mode = InputMode::AddingNote;
+                self.input_buffer.clear();
+                self.message = Some("输入笔记内容，Enter 确认，Esc 取消".to_owned());
+            }
+            // D 键（Shift+d）删除笔记（确认提示）
+            KeyCode::Char('D') => {
+                if let Some(task) = &self.current_task {
+                    if !task.notes.is_empty() {
+                        self.selected_note_index = 0;
+                        self.confirm_delete_note = true;
+                    }
+                }
+            }
+            // L 键添加资源链接（两步输入：名称 → URL）
+            KeyCode::Char('L') => {
+                self.input_mode = InputMode::AddingResourceName;
+                self.input_buffer.clear();
+                self.resource_name_buffer.clear();
+                self.message = Some("输入资源名称，Enter 下一步，Esc 取消".to_owned());
+            }
             _ => {}
         }
 
@@ -1165,35 +1327,77 @@ impl App {
             KeyCode::Esc => {
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.resource_name_buffer.clear();
                 self.message = None;
             }
             KeyCode::Enter => {
-                let name = self.input_buffer.trim().to_owned();
-                if name.is_empty() {
-                    self.input_mode = InputMode::Normal;
-                    self.input_buffer.clear();
-                    self.message = Some("条目名称不能为空".to_owned());
-                    return;
-                }
+                let value = self.input_buffer.trim().to_owned();
                 if let Some(task) = &self.current_task {
                     let task_id = task.id.clone();
                     match &self.input_mode {
                         InputMode::AddingItem => {
-                            self.spawn_add_item(task_id, name);
+                            if value.is_empty() {
+                                self.input_mode = InputMode::Normal;
+                                self.input_buffer.clear();
+                                self.message = Some("条目名称不能为空".to_owned());
+                                return;
+                            }
+                            self.spawn_add_item(task_id, value);
                         }
                         InputMode::EditingItemName => {
+                            if value.is_empty() {
+                                self.input_mode = InputMode::Normal;
+                                self.input_buffer.clear();
+                                self.message = Some("条目名称不能为空".to_owned());
+                                return;
+                            }
                             let idx = self.selected_item_index;
-                            self.spawn_edit_item_name(task_id, idx, name);
+                            self.spawn_edit_item_name(task_id, idx, value);
                         }
                         InputMode::EditingItemDesc => {
                             let idx = self.selected_item_index;
-                            self.spawn_edit_item_desc(task_id, idx, name);
+                            self.spawn_edit_item_desc(task_id, idx, value);
+                        }
+                        InputMode::AddingNote => {
+                            if value.is_empty() {
+                                self.input_mode = InputMode::Normal;
+                                self.input_buffer.clear();
+                                self.message = Some("笔记内容不能为空".to_owned());
+                                return;
+                            }
+                            self.spawn_add_note(task_id, value);
+                        }
+                        InputMode::AddingResourceName => {
+                            if value.is_empty() {
+                                self.input_mode = InputMode::Normal;
+                                self.input_buffer.clear();
+                                self.message = Some("资源名称不能为空".to_owned());
+                                return;
+                            }
+                            // 保存名称，切换到 URL 输入步骤
+                            self.resource_name_buffer = value;
+                            self.input_buffer.clear();
+                            self.input_mode = InputMode::AddingResourceUrl;
+                            self.message = Some("输入资源 URL，Enter 确认，Esc 取消".to_owned());
+                            return; // 不清除输入模式
+                        }
+                        InputMode::AddingResourceUrl => {
+                            if value.is_empty() {
+                                self.input_mode = InputMode::Normal;
+                                self.input_buffer.clear();
+                                self.resource_name_buffer.clear();
+                                self.message = Some("资源 URL 不能为空".to_owned());
+                                return;
+                            }
+                            let name = std::mem::take(&mut self.resource_name_buffer);
+                            self.spawn_add_resource(task_id, name, value);
                         }
                         InputMode::Normal => unreachable!(),
                     }
                 }
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.resource_name_buffer.clear();
             }
             KeyCode::Backspace => {
                 self.input_buffer.pop();

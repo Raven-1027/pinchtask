@@ -43,6 +43,11 @@ pub fn draw(f: &mut Frame, app: &App) {
         draw_delete_confirm(f, size, app);
     }
 
+    // 笔记删除确认对话框（覆盖层）
+    if app.confirm_delete_note() {
+        draw_delete_note_confirm(f, size, app);
+    }
+
     draw_status_bar(f, chunks[2], app);
 }
 
@@ -143,7 +148,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 if app.input_mode() != &InputMode::Normal {
                     " Enter 确认  Esc 取消  Backspace 删除"
                 } else {
-                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除  Ctrl+J/K 移动顺序  ←/Esc 返回"
+                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除条目  N 添加笔记  D 删除笔记  L 添加资源  Ctrl+J/K 移动顺序  Esc 返回"
                 }
             }
             View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
@@ -342,6 +347,9 @@ fn draw_input_overlay(f: &mut Frame, area: Rect, app: &App) {
         InputMode::AddingItem => "添加条目",
         InputMode::EditingItemName => "编辑名称",
         InputMode::EditingItemDesc => "编辑描述",
+        InputMode::AddingNote => "添加笔记",
+        InputMode::AddingResourceName => "资源名称",
+        InputMode::AddingResourceUrl => "资源 URL",
         InputMode::Normal => return,
     };
 
@@ -581,6 +589,18 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
             Span::raw("    添加清单条目"),
         ]),
         Line::from(vec![
+            Span::styled("    N        ", Style::default().fg(Color::Yellow)),
+            Span::raw("    添加笔记"),
+        ]),
+        Line::from(vec![
+            Span::styled("    D        ", Style::default().fg(Color::Yellow)),
+            Span::raw("    删除笔记（需确认）"),
+        ]),
+        Line::from(vec![
+            Span::styled("    L        ", Style::default().fg(Color::Yellow)),
+            Span::raw("    添加资源链接"),
+        ]),
+        Line::from(vec![
             Span::styled("    Esc/←    ", Style::default().fg(Color::Yellow)),
             Span::raw("    返回任务列表"),
         ]),
@@ -668,6 +688,52 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(Color::Red))
             .title(Span::styled(
                 " ⚠ 删除确认 ",
+                Style::default().fg(Color::Red),
+            )),
+    );
+
+    f.render_widget(paragraph, dialog_area);
+}
+
+// ── 笔记删除确认对话框 ─────────────────────────────────────────────────────
+
+fn draw_delete_note_confirm(f: &mut Frame, area: Rect, app: &App) {
+    let width = 50.min(area.width.saturating_sub(4));
+    let height = 6;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let dialog_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, dialog_area);
+
+    let note_preview = app
+        .current_task()
+        .and_then(|t| t.notes.get(app.selected_note_index()))
+        .map(|n| truncate_str(n, 30))
+        .unwrap_or_default();
+
+    let lines = vec![
+        Line::from(""),
+        Line::styled(
+            "  确认删除此笔记？",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!("  {note_preview}")),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::raw(" 确认  "),
+            Span::styled("n/Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw(" 取消"),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Red))
+            .title(Span::styled(
+                " ⚠ 删除笔记 ",
                 Style::default().fg(Color::Red),
             )),
     );
