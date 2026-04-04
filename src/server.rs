@@ -102,7 +102,7 @@ impl PinchTaskServer {
     // 1. initialize_task
     // ------------------------------------------------------------------
     #[tool(
-        name = "initialize_task",
+        name = "init_task",
         description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints)."
     )]
     pub async fn initialize_task(
