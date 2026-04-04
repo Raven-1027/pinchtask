@@ -5,20 +5,21 @@
 //! 笔记区、资源区。清单条目支持焦点高亮，选中行自动滚动到可视范围内。
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
 use crate::models::task::Task;
 
+use super::theme::*;
+
 // ── 常量 ───────────────────────────────────────────────────────────────────
 
-/// 清单条目前缀宽度：marker(3) + checkbox(4) = 7 字符。
+/// 清单条目前缀宽度：marker(3) + checkbox(3) = 6 字符（使用图标后宽度变化）。
 const ITEM_PREFIX_WIDTH: usize = 7;
 
 /// 清单条目名称默认最大宽度。
 const DEFAULT_ITEM_NAME_WIDTH: usize = 40;
-
 
 // ── 组件 ───────────────────────────────────────────────────────────────────
 
@@ -43,9 +44,6 @@ impl<'a> TaskDetail<'a> {
     }
 
     /// 根据可视区域高度和选中索引计算清单区滚动偏移。
-    ///
-    /// 确保选中行始终可见：当 selected_item_index 超出当前可视范围时，
-    /// 自动调整偏移使选中行出现在可视区域内。
     fn scroll_offset(&self, visible_item_rows: usize) -> usize {
         if visible_item_rows == 0 || self.task.checklist.is_empty() {
             return 0;
@@ -67,18 +65,18 @@ impl<'a> Widget for TaskDetail<'a> {
         // ── 1. 任务头部：描述 + ID + 上下文 ────────────────────────────
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-            Span::styled(" 📋 ", Style::default().fg(Color::Cyan)),
+            Span::styled(" 📋 ", Style::default().fg(ACCENT)),
             Span::styled(
                 &self.task.task_description,
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ACCENT)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
         let id_short = &self.task.id[..self.task.id.len().min(8)];
         lines.push(Line::from(vec![
-            Span::styled(" ID:    ", Style::default().fg(Color::DarkGray)),
-            Span::styled(id_short, Style::default().fg(Color::DarkGray)),
+            Span::styled(" ID:    ", label_style()),
+            Span::styled(id_short, Style::default().fg(MUTED)),
         ]));
 
         // 上下文
@@ -86,8 +84,8 @@ impl<'a> Widget for TaskDetail<'a> {
             let ctx_lines = wrap_text(ctx, total_width.saturating_sub(10));
             if let Some(first) = ctx_lines.first() {
                 lines.push(Line::from(vec![
-                    Span::styled(" 上下文: ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(first.clone(), Style::default().fg(Color::White)),
+                    Span::styled(" 上下文: ", label_style()),
+                    Span::styled(first.clone(), Style::default().fg(TEXT)),
                 ]));
                 for extra_line in ctx_lines.iter().skip(1) {
                     lines.push(Line::from(format!("         {extra_line}")));
@@ -99,17 +97,11 @@ impl<'a> Widget for TaskDetail<'a> {
         if let Some(ref meta) = self.task.metadata {
             lines.push(Line::from(""));
 
-            // 优先级
+            // 优先级（带图标）
             if let Some(ref priority) = meta.priority {
-                let color = match priority.as_str() {
-                    "high" => Color::Red,
-                    "medium" => Color::Yellow,
-                    "low" => Color::Green,
-                    _ => Color::DarkGray,
-                };
                 lines.push(Line::from(vec![
-                    Span::styled(" 优先级: ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(priority, Style::default().fg(color)),
+                    Span::styled(" 优先级: ", label_style()),
+                    priority_span(priority, 0),
                 ]));
             }
 
@@ -118,8 +110,8 @@ impl<'a> Widget for TaskDetail<'a> {
                 if !tags.is_empty() {
                     let tags_str = tags.join(", ");
                     lines.push(Line::from(vec![
-                        Span::styled(" 标签:   ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(tags_str, Style::default().fg(Color::Magenta)),
+                        Span::styled(" 标签:   ", label_style()),
+                        Span::styled(tags_str, Style::default().fg(TAG)),
                     ]));
                 }
             }
@@ -127,8 +119,8 @@ impl<'a> Widget for TaskDetail<'a> {
             // 预计完成时间
             if let Some(ref eta) = meta.estimated_completion_time {
                 lines.push(Line::from(vec![
-                    Span::styled(" ETA:    ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(eta, Style::default().fg(Color::Blue)),
+                    Span::styled(" ETA:    ", label_style()),
+                    Span::styled(eta, Style::default().fg(LINK)),
                 ]));
             }
         }
@@ -137,33 +129,35 @@ impl<'a> Widget for TaskDetail<'a> {
         lines.push(Line::from(""));
         let done_count = self.task.checklist.iter().filter(|i| i.done).count();
         let total_items = self.task.checklist.len();
-        lines.push(Line::from(vec![
+
+        // 清单标题行（带进度条）
+        let mut title_spans = vec![
             Span::styled(
                 format!(" ☑ 清单 ({done_count}/{total_items})"),
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
+                section_title_style(),
             ),
-        ]));
+            Span::raw("  "),
+        ];
+        let pct = if total_items > 0 {
+            done_count * 100 / total_items
+        } else {
+            0
+        };
+        title_spans.extend(progress_bar_spans(pct, 10));
+        lines.push(Line::from(title_spans));
 
         // 分隔线
-        let sep = "─".repeat(total_width.saturating_sub(2).max(1));
-        lines.push(Line::from(Span::styled(
-            sep.clone(),
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.task.checklist.is_empty() {
             lines.push(Line::styled(
                 "   （无清单条目，按 a 添加）",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(MUTED)
                     .add_modifier(Modifier::ITALIC),
             ));
         } else {
             // 计算清单区可用行数
-            // 头部大约 10-15 行，笔记区 + 资源区大约预留 6-8 行
-            // 动态计算：剩余空间 = 总高度 - 已有行数 - 预留（笔记+资源约6行底部）
             let reserved_for_notes_resources = 6;
             let remaining = total_height.saturating_sub(lines.len() + reserved_for_notes_resources);
             let max_visible_items = remaining.max(3);
@@ -185,30 +179,37 @@ impl<'a> Widget for TaskDetail<'a> {
 
             for (i, item) in visible_items {
                 let is_selected = i == self.selected_item_index;
-                let marker = if is_selected { "▸" } else { " " };
-                let checkbox = if item.done { "[x]" } else { "[ ]" };
+                let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
 
+                // 行样式
                 let row_style = if is_selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    selected_style()
                 } else if item.done {
-                    Style::default().fg(Color::DarkGray)
+                    completed_style()
                 } else {
-                    Style::default()
+                    normal_style()
                 };
 
-                let checkbox_style = if item.done {
-                    Style::default().fg(Color::Green)
+                // 复选框样式
+                let checkbox_span = if item.done {
+                    if is_selected {
+                        checkbox_done_selected()
+                    } else {
+                        checkbox_done()
+                    }
                 } else {
-                    Style::default().fg(Color::DarkGray)
+                    if is_selected {
+                        checkbox_pending_selected()
+                    } else {
+                        checkbox_pending()
+                    }
                 };
 
                 let name = truncate_str(&item.task, item_name_width);
 
                 lines.push(Line::from(vec![
                     Span::styled(format!(" {marker} "), row_style),
-                    Span::styled(format!("{checkbox} "), checkbox_style),
+                    checkbox_span,
                     Span::styled(
                         format!("{:<w$}", name, w = item_name_width),
                         row_style,
@@ -223,10 +224,7 @@ impl<'a> Widget for TaskDetail<'a> {
                         for dl in desc_lines {
                             lines.push(Line::from(vec![
                                 Span::styled("       ", Style::default()),
-                                Span::styled(
-                                    dl,
-                                    Style::default().fg(Color::White),
-                                ),
+                                Span::styled(dl, Style::default().fg(TEXT)),
                             ]));
                         }
                     }
@@ -235,10 +233,7 @@ impl<'a> Widget for TaskDetail<'a> {
                         for pl in plan_lines {
                             lines.push(Line::from(vec![
                                 Span::styled("       ", Style::default()),
-                                Span::styled(
-                                    pl,
-                                    Style::default().fg(Color::Blue),
-                                ),
+                                Span::styled(pl, Style::default().fg(LINK)),
                             ]));
                         }
                     }
@@ -252,20 +247,17 @@ impl<'a> Widget for TaskDetail<'a> {
             Span::styled(
                 format!(" 📝 笔记 ({})", self.task.notes.len()),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(HIGHLIGHT_FG)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
-        lines.push(Line::from(Span::styled(
-            sep.clone(),
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.task.notes.is_empty() {
             lines.push(Line::styled(
                 "   （暂无笔记）",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(MUTED)
                     .add_modifier(Modifier::ITALIC),
             ));
         } else {
@@ -277,7 +269,7 @@ impl<'a> Widget for TaskDetail<'a> {
                         lines.push(Line::from(vec![
                             Span::styled(
                                 format!(" {}. ", i + 1),
-                                Style::default().fg(Color::DarkGray),
+                                Style::default().fg(MUTED),
                             ),
                             Span::raw(line),
                         ]));
@@ -294,20 +286,17 @@ impl<'a> Widget for TaskDetail<'a> {
             Span::styled(
                 format!(" 🔗 资源 ({})", self.task.resources.len()),
                 Style::default()
-                    .fg(Color::Blue)
+                    .fg(LINK)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
-        lines.push(Line::from(Span::styled(
-            sep,
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.task.resources.is_empty() {
             lines.push(Line::styled(
                 "   （暂无关联资源）",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(MUTED)
                     .add_modifier(Modifier::ITALIC),
             ));
         } else {
@@ -321,7 +310,7 @@ impl<'a> Widget for TaskDetail<'a> {
                 let entry = format!("{}: {}{desc_suffix}", res.name, res.url);
                 let truncated = truncate_str(&entry, url_width);
                 lines.push(Line::from(vec![
-                    Span::styled(" • ", Style::default().fg(Color::Blue)),
+                    Span::styled(format!(" {ICON_BULLET} "), Style::default().fg(LINK)),
                     Span::styled(truncated, Style::default()),
                 ]));
             }
@@ -332,7 +321,7 @@ impl<'a> Widget for TaskDetail<'a> {
         lines.push(Line::from(vec![
             Span::styled(
                 format!(" 创建: {}  更新: {}", self.task.created_at, self.task.updated_at),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(MUTED),
             ),
         ]));
 
@@ -345,8 +334,6 @@ impl<'a> Widget for TaskDetail<'a> {
 // ── 文本处理辅助 ───────────────────────────────────────────────────────────
 
 /// 将字符串截断到指定字符宽度。
-///
-/// 字符数超过 `max_len` 时截断并追加 `…`；不足则原样返回。
 fn truncate_str(s: &str, max_len: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max_len {
@@ -358,9 +345,6 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 }
 
 /// 将文本按指定宽度自动换行。
-///
-/// 返回行列表，每行字符数不超过 `max_width`。
-/// 在字符边界处断行（不按词拆分），空字符串返回一个空行的 Vec。
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 {
         return vec![text.to_owned()];
@@ -448,7 +432,6 @@ mod tests {
     fn scroll_offset_adjusts_when_selected_below_visible() {
         let task = test_task();
         let td = TaskDetail::new(&task, 5);
-        // visible=3 → offset = 5 - 3 + 1 = 3
         assert_eq!(td.scroll_offset(3), 3);
     }
 

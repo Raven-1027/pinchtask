@@ -5,11 +5,13 @@
 //! 自动调整滚动偏移。
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
 use crate::models::task::Task;
+
+use super::theme::*;
 
 // ── 常量 ───────────────────────────────────────────────────────────────────
 
@@ -57,19 +59,14 @@ impl<'a> TaskList<'a> {
     }
 
     /// 根据可视区域高度和选中索引计算滚动偏移。
-    ///
-    /// 确保选中行始终可见：当 selected_index 超出当前可视范围时，
-    /// 自动调整 scroll_offset 使选中行出现在可视区域底部。
     fn scroll_offset(&self, visible_height: usize) -> usize {
         if visible_height == 0 || self.tasks.is_empty() {
             return 0;
         }
-        // 可容纳的任务行数 = 总高度 - 表头(2行) - 底部(2行)
         let usable = visible_height.saturating_sub(HEADER_ROWS + FOOTER_ROWS);
         if usable == 0 {
             return 0;
         }
-        // 如果选中行在当前可视窗口下方，向下滚动
         if self.selected_index >= usable {
             self.selected_index - usable + 1
         } else {
@@ -87,13 +84,13 @@ impl<'a> Widget for TaskList<'a> {
                 Line::styled(
                     "  暂无任务",
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(MUTED)
                         .add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
                 Line::styled(
                     "  按 n 创建新任务，按 ? 查看帮助",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(MUTED),
                 ),
             ];
             let widget = ratatui::widgets::Paragraph::new(empty_msg);
@@ -101,19 +98,17 @@ impl<'a> Widget for TaskList<'a> {
             return;
         }
 
-        // 计算滚动偏移
         let visible_height = area.height as usize;
         let scroll = self.scroll_offset(visible_height);
         let usable_rows = visible_height.saturating_sub(HEADER_ROWS + FOOTER_ROWS);
 
-        // 动态计算描述列宽度：总宽 - 前缀 - 进度 - 优先级 - 时间 - 间距
         let total_width = area.width as usize;
         let desc_width = total_width
             .saturating_sub(PREFIX_WIDTH)
             .saturating_sub(PROGRESS_WIDTH)
             .saturating_sub(PRIORITY_WIDTH)
             .saturating_sub(TIME_WIDTH)
-            .saturating_sub(4); // 列间间距
+            .saturating_sub(4);
         let desc_width = desc_width.max(8).min(DEFAULT_DESC_WIDTH * 2);
 
         let mut lines: Vec<Line> = Vec::with_capacity(visible_height);
@@ -128,12 +123,7 @@ impl<'a> Widget for TaskList<'a> {
             Span::styled(format!("{:<w$}", "时间", w = TIME_WIDTH), header_style()),
         ]));
 
-        // 分隔线
-        let separator = "─".repeat(total_width.saturating_sub(2).max(1));
-        lines.push(Line::from(Span::styled(
-            separator,
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         // ── 任务行 ─────────────────────────────────────────────────────
         let visible_tasks = self
@@ -146,35 +136,36 @@ impl<'a> Widget for TaskList<'a> {
         for (i, task) in visible_tasks {
             let is_selected = i == self.selected_index;
 
-            // 选中行标记
-            let marker = if is_selected { "▸" } else { " " };
-
-            // ID 前 8 位
+            let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
             let id_short = &task.id[..task.id.len().min(8)];
 
-            // 进度：已完成/总数
             let done_count = task.checklist.iter().filter(|item| item.done).count();
             let total = task.checklist.len();
-            let progress = format!("{done_count}/{total}");
+            let all_done = total > 0 && done_count == total;
 
-            // 优先级文本与颜色
             let priority_text = task
                 .metadata
                 .as_ref()
                 .and_then(|m| m.priority.as_deref())
                 .unwrap_or("-");
-            let priority_span = priority_span(priority_text);
-
-            // 创建时间短格式（MM-DD 或完整日期后 5 位）
             let time_short = format_created_at(&task.created_at);
 
             // 行样式
             let row_style = if is_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                selected_style()
+            } else if all_done {
+                completed_style()
             } else {
-                Style::default()
+                normal_style()
+            };
+
+            // 优先级样式
+            let p_style = if is_selected {
+                Style::default().fg(priority_color(priority_text))
+            } else if all_done {
+                completed_priority_style(priority_text)
+            } else {
+                Style::default().fg(priority_color(priority_text))
             };
 
             lines.push(Line::from(vec![
@@ -184,8 +175,8 @@ impl<'a> Widget for TaskList<'a> {
                     format!("{:<w$}", truncate_str(&task.task_description, desc_width), w = desc_width),
                     row_style,
                 ),
-                Span::styled(format!("{:<w$}", progress, w = PROGRESS_WIDTH), row_style),
-                priority_span,
+                Span::styled(format!("{:<w$}", format!("{done_count}/{total}"), w = PROGRESS_WIDTH), row_style),
+                Span::styled(format!("{:<w$}", priority_text, w = PRIORITY_WIDTH), p_style),
                 Span::styled(time_short, row_style),
             ]));
         }
@@ -197,52 +188,20 @@ impl<'a> Widget for TaskList<'a> {
             .get(self.selected_index)
             .map(|t| &t.id[..t.id.len().min(8)]);
         let footer = if let Some(id) = selected_id {
-            format!(
-                "  共 {} 个任务，选中: {}",
-                self.tasks.len(),
-                id
-            )
+            format!("  共 {} 个任务，选中: {}", self.tasks.len(), id)
         } else {
             format!("  共 {} 个任务", self.tasks.len())
         };
-        lines.push(Line::from(Span::styled(
-            footer,
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(Span::styled(footer, Style::default().fg(MUTED))));
 
         let widget = ratatui::widgets::Paragraph::new(lines);
         widget.render(area, buf);
     }
 }
 
-// ── 样式辅助 ───────────────────────────────────────────────────────────────
-
-/// 表头样式。
-fn header_style() -> Style {
-    Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD)
-}
-
-/// 根据优先级文本返回带颜色的 Span。
-fn priority_span(priority: &str) -> Span<'static> {
-    let color = match priority {
-        "high" => Color::Red,
-        "medium" => Color::Yellow,
-        "low" => Color::Green,
-        _ => Color::DarkGray,
-    };
-    Span::styled(
-        format!("{:<w$}", priority, w = PRIORITY_WIDTH),
-        Style::default().fg(color),
-    )
-}
-
 // ── 文本处理辅助 ───────────────────────────────────────────────────────────
 
 /// 将字符串截断到指定字符宽度。
-///
-/// 字符数超过 `max_len` 时截断并追加 `…`；不足则原样返回（调用方负责填充）。
 fn truncate_str(s: &str, max_len: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max_len {
@@ -254,14 +213,8 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 }
 
 /// 将 ISO 8601 日期时间字符串格式化为短日期（MM-DD）。
-///
-/// 输入格式示例: "2026-04-03T18:30:00Z" 或 "2026-04-03 18:30:00"。
-/// 提取月-日部分返回；解析失败时返回原始日期部分的前 10 个字符。
 fn format_created_at(datetime: &str) -> String {
-    // 尝试从 ISO 8601 格式中提取 "MM-DD"
-    // 格式: "YYYY-MM-DD..."
     if datetime.len() >= 10 {
-        // datetime[5..10] = "MM-DD"
         datetime[5..10].to_owned()
     } else {
         datetime.to_owned()
@@ -282,7 +235,6 @@ mod tests {
 
     #[test]
     fn scroll_offset_adjusts_when_selected_below_visible() {
-        // 10 个任务，visible_height=7 → usable=7-4=3，selected=5 → offset=3
         let tasks: Vec<Task> = (0..10)
             .map(|i| Task {
                 id: format!("{i:032}"),

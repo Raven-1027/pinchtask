@@ -1,0 +1,260 @@
+//! 统一视觉主题模块。
+//!
+//! 集中管理 TUI 所有视图的配色、图标与样式常量，
+//! 确保视觉一致性并简化样式维护。
+
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::Span;
+
+// ── 最小终端尺寸 ───────────────────────────────────────────────────────────
+
+/// 最小终端宽度（字符列数）。
+pub const MIN_WIDTH: u16 = 80;
+/// 最小终端高度（字符行数）。
+pub const MIN_HEIGHT: u16 = 24;
+
+// ── 状态图标 ───────────────────────────────────────────────────────────────
+
+/// 已完成（勾选）。
+pub const ICON_DONE: &str = "✓";
+/// 未完成（空心圆）。
+pub const ICON_PENDING: &str = "○";
+/// 选中行标记。
+pub const ICON_SELECTED: &str = "▸";
+/// 未选中行标记。
+pub const ICON_UNSELECTED: &str = " ";
+/// 列表圆点。
+pub const ICON_BULLET: &str = "•";
+/// 警告图标。
+pub const ICON_WARN: &str = "⚠";
+/// 编辑图标。
+pub const ICON_EDIT: &str = "✏";
+/// 新增图标。
+pub const ICON_NEW: &str = "✚";
+/// 错误图标。
+pub const ICON_ERROR: &str = "✖";
+/// 信息图标。
+pub const ICON_INFO: &str = "ℹ";
+/// 优先级标记：高。
+pub const ICON_PRIORITY_HIGH: &str = "●";
+/// 优先级标记：中。
+pub const ICON_PRIORITY_MEDIUM: &str = "◑";
+/// 优先级标记：低。
+pub const ICON_PRIORITY_LOW: &str = "○";
+
+// ── 配色常量 ───────────────────────────────────────────────────────────────
+
+/// 标题栏背景色。
+pub const TITLE_BG: Color = Color::DarkGray;
+
+/// 默认边框色（非焦点）。
+pub const BORDER: Color = Color::DarkGray;
+/// 焦点边框色。
+pub const BORDER_FOCUSED: Color = Color::Cyan;
+/// 危险操作边框色。
+pub const BORDER_DANGER: Color = Color::Red;
+
+/// 标题/主文字强调色。
+pub const ACCENT: Color = Color::Cyan;
+/// 标签色（标签列表）。
+pub const TAG: Color = Color::Magenta;
+/// 链接色（资源 URL）。
+pub const LINK: Color = Color::Blue;
+/// 次要文本色。
+pub const MUTED: Color = Color::DarkGray;
+/// 正文色。
+pub const TEXT: Color = Color::White;
+/// 标题栏/状态栏选中高亮前景色。
+pub const HIGHLIGHT_FG: Color = Color::Yellow;
+
+// ── 优先级样式 ─────────────────────────────────────────────────────────────
+
+/// 返回优先级对应的颜色。
+pub fn priority_color(priority: &str) -> Color {
+    match priority {
+        "high" => Color::Red,
+        "medium" => Color::Yellow,
+        "low" => Color::Green,
+        _ => MUTED,
+    }
+}
+
+/// 返回优先级对应的图标。
+pub fn priority_icon(priority: &str) -> &'static str {
+    match priority {
+        "high" => ICON_PRIORITY_HIGH,
+        "medium" => ICON_PRIORITY_MEDIUM,
+        "low" => ICON_PRIORITY_LOW,
+        _ => " ",
+    }
+}
+
+/// 返回优先级对应的 Span（带图标 + 文本 + 颜色）。
+pub fn priority_span(priority: &str, width: usize) -> Span<'static> {
+    let color = priority_color(priority);
+    let icon = priority_icon(priority);
+    let text = if priority == "-" || priority.is_empty() {
+        format!("{:<w$}", "-", w = width)
+    } else {
+        format!("{icon} {:<w$}", priority, w = width.saturating_sub(2).max(1))
+    };
+    Span::styled(text, Style::default().fg(color))
+}
+
+// ── 行样式 ─────────────────────────────────────────────────────────────────
+
+/// 选中行样式。
+pub fn selected_style() -> Style {
+    Style::default()
+        .fg(HIGHLIGHT_FG)
+        .bg(Color::Indexed(236)) // 深灰背景（比 DarkGray 更柔和）
+        .add_modifier(Modifier::BOLD)
+}
+
+/// 已完成（全部条目完成）的行样式：灰色 + 删除线。
+pub fn completed_style() -> Style {
+    Style::default()
+        .fg(Color::Indexed(244)) // 中灰，比 DarkGray 稍亮
+        .add_modifier(Modifier::CROSSED_OUT)
+}
+
+/// 已完成行中优先级列的样式（保持颜色但加删除线）。
+pub fn completed_priority_style(priority: &str) -> Style {
+    Style::default()
+        .fg(priority_color(priority))
+        .add_modifier(Modifier::CROSSED_OUT)
+}
+
+/// 普通行样式。
+pub fn normal_style() -> Style {
+    Style::default()
+}
+
+// ── 区块标题样式 ───────────────────────────────────────────────────────────
+
+/// 详情区区块标题样式。
+pub fn section_title_style() -> Style {
+    Style::default()
+        .fg(ACCENT)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// 详情区标签样式（"ID:", "优先级:" 等前缀）。
+pub fn label_style() -> Style {
+    Style::default().fg(Color::Indexed(246)) // 浅灰
+}
+
+// ── 进度条 ─────────────────────────────────────────────────────────────────
+
+/// 进度条填充字符。
+const BAR_FILLED: char = '█';
+/// 进度条空白字符。
+const BAR_EMPTY: char = '░';
+
+/// 生成带颜色的进度条 Span 列表。
+///
+/// 进度越高颜色越绿，越低越偏红/黄。宽度至少 2（两侧方括号）。
+pub fn progress_bar_spans(pct: usize, width: usize) -> Vec<Span<'static>> {
+    if width < 4 {
+        // 极短时只显示百分比
+        return vec![Span::styled(
+            format!("{pct:>3}%"),
+            Style::default().fg(bar_color(pct)),
+        )];
+    }
+
+    let inner = width.saturating_sub(2); // 去掉 [ ]
+    let filled = pct * inner / 100;
+    let empty = inner.saturating_sub(filled);
+
+    let filled_str = BAR_FILLED.to_string().repeat(filled);
+    let empty_str = BAR_EMPTY.to_string().repeat(empty);
+
+    vec![
+        Span::styled("[", Style::default().fg(MUTED)),
+        Span::styled(filled_str, Style::default().fg(bar_color(pct))),
+        Span::styled(empty_str, Style::default().fg(Color::Indexed(236))),
+        Span::styled("]", Style::default().fg(MUTED)),
+    ]
+}
+
+/// 根据百分比返回进度条填充颜色。
+///
+/// - 0–25%: 红色
+/// - 26–50%: 黄色
+/// - 51–75%: 青色
+/// - 76–100%: 绿色
+fn bar_color(pct: usize) -> Color {
+    match pct {
+        0..=25 => Color::Red,
+        26..=50 => Color::Yellow,
+        51..=75 => Color::Cyan,
+        _ => Color::Green,
+    }
+}
+
+/// 生成纯文本进度条（不含颜色）。
+pub fn progress_bar_plain(pct: usize, width: usize) -> String {
+    if width < 2 {
+        return String::new();
+    }
+    let filled = pct * (width - 2) / 100;
+    let empty = (width - 2).saturating_sub(filled);
+    format!("[{}{}]", BAR_FILLED.to_string().repeat(filled), BAR_EMPTY.to_string().repeat(empty))
+}
+
+// ── 表头样式 ───────────────────────────────────────────────────────────────
+
+/// 列表表头样式。
+pub fn header_style() -> Style {
+    Style::default()
+        .fg(Color::Indexed(248)) // 更亮的灰色
+        .add_modifier(Modifier::BOLD)
+}
+
+// ── 分隔线 ─────────────────────────────────────────────────────────────────
+
+/// 生成分隔线 Span。
+pub fn separator(width: usize) -> Span<'static> {
+    Span::styled(
+        "─".repeat(width.max(1)),
+        Style::default().fg(Color::Indexed(238)), // 略亮于 DarkGray 的灰
+    )
+}
+
+// ── 复选框样式 ─────────────────────────────────────────────────────────────
+
+/// 已勾选复选框文本（带绿色）。
+pub fn checkbox_done() -> Span<'static> {
+    Span::styled(
+        format!(" {} ", ICON_DONE),
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+    )
+}
+
+/// 未勾选复选框文本（暗灰色）。
+pub fn checkbox_pending() -> Span<'static> {
+    Span::styled(
+        format!(" {} ", ICON_PENDING),
+        Style::default().fg(Color::Indexed(240)),
+    )
+}
+
+/// 已勾选复选框文本 + 选中行高亮背景。
+pub fn checkbox_done_selected() -> Span<'static> {
+    Span::styled(
+        format!(" {} ", ICON_DONE),
+        Style::default()
+            .fg(Color::Green)
+            .bg(Color::Indexed(236))
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+/// 未勾选复选框文本 + 选中行高亮背景。
+pub fn checkbox_pending_selected() -> Span<'static> {
+    Span::styled(
+        format!(" {} ", ICON_PENDING),
+        Style::default().fg(Color::Indexed(248)).bg(Color::Indexed(236)),
+    )
+}

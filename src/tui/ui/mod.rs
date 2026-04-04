@@ -13,12 +13,21 @@ use super::app::{App, FormField, FormMode, InputMode, View};
 
 pub mod task_detail;
 pub mod task_list;
+pub mod theme;
+
+use theme::*;
 
 // ── 公开渲染入口 ───────────────────────────────────────────────────────────
 
 /// 顶层渲染入口：根据当前视图分发到对应的渲染函数。
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
+
+    // 最小终端尺寸检测
+    if size.width < MIN_WIDTH || size.height < MIN_HEIGHT {
+        draw_too_small(f, size);
+        return;
+    }
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -51,6 +60,24 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_status_bar(f, chunks[2], app);
 }
 
+// ── 最小终端尺寸提示 ───────────────────────────────────────────────────────
+
+fn draw_too_small(f: &mut Frame, area: Rect) {
+    let msg = format!(
+        " 终端尺寸过小（当前 {}×{}），请至少调整为 {}×{} ",
+        area.width, area.height, MIN_WIDTH, MIN_HEIGHT
+    );
+    let paragraph = Paragraph::new(Line::from(Span::styled(
+        msg,
+        Style::default()
+            .fg(ACCENT)
+            .add_modifier(Modifier::BOLD),
+    )))
+    .style(Style::default().bg(TITLE_BG))
+    .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(paragraph, area);
+}
+
 // ── 标题栏 ─────────────────────────────────────────────────────────────────
 
 fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
@@ -65,31 +92,23 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
         Span::styled(
             " pinchtask TUI ",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(ACCENT)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
         Span::styled(
             format!("[{view_name}]"),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(HIGHLIGHT_FG),
         ),
     ];
 
     // 搜索模式下显示搜索框
     if app.search_mode() {
         spans.push(Span::raw("  "));
+        spans.push(Span::styled("搜索: ", Style::default().fg(Color::Green)));
         spans.push(Span::styled(
-            "搜索: ",
-            Style::default().fg(Color::Green),
-        ));
-        spans.push(Span::styled(
-            format!(
-                "{}│",
-                app.search_query().unwrap_or("")
-            ),
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
+            format!("{}│", app.search_query().unwrap_or("")),
+            Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
         ));
     } else if let Some(query) = app.search_query() {
         if !query.is_empty() {
@@ -106,11 +125,11 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!("排序: {}", app.sort_mode().label()),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(MUTED),
         ));
     }
 
-    let paragraph = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
+    let paragraph = Paragraph::new(Line::from(spans)).style(Style::default().bg(TITLE_BG));
     f.render_widget(paragraph, area);
 }
 
@@ -120,24 +139,18 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let text = if let Some(err) = app.error_message() {
         Line::from(vec![
             Span::styled(
-                " ✖ ",
-                Style::default().fg(Color::White).bg(Color::Red),
+                format!(" {} ", ICON_ERROR),
+                Style::default().fg(TEXT).bg(Color::Red),
             ),
-            Span::styled(
-                err.to_owned(),
-                Style::default().fg(Color::Red),
-            ),
+            Span::styled(err.to_owned(), Style::default().fg(Color::Red)),
         ])
     } else if let Some(msg) = app.message() {
         Line::from(vec![
             Span::styled(
-                " ℹ ",
-                Style::default().fg(Color::Black).bg(Color::Cyan),
+                format!(" {} ", ICON_INFO),
+                Style::default().fg(Color::Black).bg(ACCENT),
             ),
-            Span::styled(
-                msg.to_owned(),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::styled(msg.to_owned(), Style::default().fg(ACCENT)),
         ])
     } else {
         let hints = match app.view() {
@@ -154,19 +167,18 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
             View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
             View::Help => " Esc/? 返回  q 退出",
         };
-        Line::from(Span::styled(
-            hints,
-            Style::default().fg(Color::DarkGray),
-        ))
+        Line::from(Span::styled(hints, Style::default().fg(MUTED)))
     };
 
-    let paragraph = Paragraph::new(text).style(Style::default().bg(Color::DarkGray));
+    let paragraph = Paragraph::new(text).style(Style::default().bg(TITLE_BG));
     f.render_widget(paragraph, area);
 }
 
 // ── 任务列表视图 ───────────────────────────────────────────────────────────
 
 fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
+    use ratatui::style::Color;
+
     let tasks = app.filtered_and_sorted_tasks();
     let selected = app.selected_index();
 
@@ -176,12 +188,14 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
                 Line::from(""),
                 Line::styled(
                     "  没有匹配的任务",
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(MUTED)
+                        .add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
                 Line::styled(
                     "  按 Esc 清除搜索过滤",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(MUTED),
                 ),
             ]
         } else {
@@ -189,12 +203,14 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
                 Line::from(""),
                 Line::styled(
                     "  暂无任务",
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    Style::default()
+                        .fg(MUTED)
+                        .add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
                 Line::styled(
                     "  按 n 创建新任务，按 ? 查看帮助",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(MUTED),
                 ),
             ]
         };
@@ -213,25 +229,22 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
 
     // 表头
     lines.push(Line::from(vec![
-        Span::styled("  #   ", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Span::styled("ID        ", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Span::styled("描述", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Span::styled("                    ", Style::default().fg(Color::DarkGray)),
-        Span::styled("进度    ", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Span::styled("优先级  ", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+        Span::styled("  #   ", header_style()),
+        Span::styled("ID        ", header_style()),
+        Span::styled("描述", header_style()),
+        Span::styled("                    ", header_style()),
+        Span::styled("进度    ", header_style()),
+        Span::styled("优先级  ", header_style()),
     ]));
-    lines.push(Line::from(Span::styled(
-        "─".repeat(area.width.saturating_sub(2) as usize),
-        Style::default().fg(Color::DarkGray),
-    )));
+    lines.push(Line::from(separator(area.width.saturating_sub(2) as usize)));
 
     // 任务行（只渲染可见范围）
-    let desc_width = 20usize; // 描述列宽度
+    let desc_width = 20usize;
     for i in visible_start..visible_end {
         let task = tasks[i];
         let is_selected = i == selected;
 
-        let marker = if is_selected { "▸" } else { " " };
+        let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
         let id_short = &task.id[..task.id.len().min(8)];
 
         // 进度
@@ -244,33 +257,31 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
             0
         };
 
-        // 优先级颜色
+        // 优先级
         let priority_str = task
             .metadata
             .as_ref()
             .and_then(|m| m.priority.as_deref())
             .unwrap_or("-");
-        let priority_style = match priority_str {
-            "high" => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            "medium" => Style::default().fg(Color::Yellow),
-            "low" => Style::default().fg(Color::Green),
-            _ => Style::default().fg(Color::DarkGray),
-        };
+        let all_done = total > 0 && done_count == total;
 
+        // 行样式
         let row_style = if is_selected {
-            Style::default()
-                .fg(Color::Yellow)
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD)
+            selected_style()
+        } else if all_done {
+            completed_style()
         } else {
-            Style::default()
+            normal_style()
         };
 
-        // 全部完成的任务用灰色
-        let row_style = if total > 0 && done_count == total && !is_selected {
-            Style::default().fg(Color::DarkGray)
+        let priority_style = if is_selected {
+            Style::default()
+                .fg(priority_color(priority_str))
+                .bg(Color::Indexed(236))
+        } else if all_done {
+            completed_priority_style(priority_str)
         } else {
-            row_style
+            Style::default().fg(priority_color(priority_str))
         };
 
         lines.push(Line::from(vec![
@@ -279,28 +290,36 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(truncate_str(&task.task_description, desc_width), row_style),
             Span::raw(" "),
             Span::styled(format!("{progress:<5}"), row_style),
-            // 简易进度条
-            Span::styled(progress_bar(progress_pct, 6), row_style),
             Span::raw(" "),
-            Span::styled(
-                format!("{priority_str:<6}",),
-                if is_selected {
-                    priority_style.bg(Color::DarkGray)
-                } else {
-                    priority_style
-                },
-            ),
+            // 彩色进度条
+            Span::styled(" ", row_style),
         ]));
+
+        // 附加进度条 spans（需要单独添加以保留颜色）
+        let bar_spans = progress_bar_spans(progress_pct, 6);
+        for span in bar_spans {
+        let styled = if is_selected {
+        let fg = span.style.fg.unwrap_or(Color::Green);
+        Span::styled(span.content, Style::default().fg(fg).bg(Color::Indexed(236)))
+        } else {
+        span
+        };
+        lines.last_mut().unwrap().spans.push(styled);
+        }
+
+        lines.last_mut().unwrap().spans.push(Span::raw(" "));
+        lines.last_mut().unwrap().spans.push(Span::styled(
+            format!("{priority_str:<6}"),
+            priority_style,
+        ));
     }
 
     // 底部信息
     lines.push(Line::from(""));
-    let mut info_spans = vec![
-        Span::styled(
-            format!("  共 {} 个任务", tasks.len()),
-            Style::default().fg(Color::DarkGray),
-        ),
-    ];
+    let mut info_spans = vec![Span::styled(
+        format!("  共 {} 个任务", tasks.len()),
+        Style::default().fg(MUTED),
+    )];
     if visible_start > 0 || visible_end < tasks.len() {
         info_spans.push(Span::styled(
             format!(
@@ -308,7 +327,7 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
                 visible_end - visible_start,
                 tasks.len()
             ),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(MUTED),
         ));
     }
     lines.push(Line::from(info_spans));
@@ -326,10 +345,7 @@ fn draw_task_detail(f: &mut Frame, area: Rect, app: &App) {
     } else {
         let content = vec![
             Line::from(""),
-            Line::styled(
-                "  正在加载任务详情...",
-                Style::default().fg(Color::DarkGray),
-            ),
+            Line::styled("  正在加载任务详情...", Style::default().fg(MUTED)),
         ];
         let paragraph = Paragraph::new(content).wrap(Wrap { trim: true });
         f.render_widget(paragraph, area);
@@ -363,25 +379,26 @@ fn draw_input_overlay(f: &mut Frame, area: Rect, app: &App) {
 
     let lines = vec![
         Line::from(vec![
-            Span::styled(
-                format!("  {label}: "),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::styled(format!("  {label}: "), Style::default().fg(ACCENT)),
             Span::styled(
                 format!("{}│", app.input_buffer()),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(""),
         Line::from(vec![
             Span::styled(
                 "  Enter ",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw("确认  "),
             Span::styled(
                 "Esc ",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(HIGHLIGHT_FG)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw("取消"),
         ]),
@@ -390,10 +407,10 @@ fn draw_input_overlay(f: &mut Frame, area: Rect, app: &App) {
     let paragraph = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(BORDER_FOCUSED))
             .title(Span::styled(
-                format!(" ✏ {label} "),
-                Style::default().fg(Color::Cyan),
+                format!(" {} {label} ", ICON_EDIT,),
+                Style::default().fg(ACCENT),
             )),
     );
     f.render_widget(paragraph, dialog_area);
@@ -416,22 +433,43 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let is_edit = form.mode != FormMode::Create;
+    let title_icon = if is_edit { ICON_EDIT } else { ICON_NEW };
     let title = if is_edit {
-        " ✏ 编辑任务 "
+        " 编辑任务 "
     } else {
-        " ✚ 新建任务 "
+        " 新建任务 "
     };
 
     let total_width = area.width as usize;
-    let label_width = 10; // "描述: " 等
+    let label_width = 10;
     let field_width = total_width.saturating_sub(label_width).saturating_sub(6).max(20);
 
     let fields = [
-        (FormField::Description, &form.description, form.focused_field == FormField::Description),
-        (FormField::Context, &form.context, form.focused_field == FormField::Context),
-        (FormField::Priority, &form.priority, form.focused_field == FormField::Priority),
-        (FormField::Tags, &form.tags, form.focused_field == FormField::Tags),
-        (FormField::Eta, &form.eta, form.focused_field == FormField::Eta),
+        (
+            FormField::Description,
+            &form.description,
+            form.focused_field == FormField::Description,
+        ),
+        (
+            FormField::Context,
+            &form.context,
+            form.focused_field == FormField::Context,
+        ),
+        (
+            FormField::Priority,
+            &form.priority,
+            form.focused_field == FormField::Priority,
+        ),
+        (
+            FormField::Tags,
+            &form.tags,
+            form.focused_field == FormField::Tags,
+        ),
+        (
+            FormField::Eta,
+            &form.eta,
+            form.focused_field == FormField::Eta,
+        ),
     ];
 
     let mut lines: Vec<Line> = Vec::new();
@@ -443,31 +481,32 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
 
         // 标签样式
         let label_style = if *focused {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(ACCENT)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(MUTED)
         };
 
         // 值样式
-        let value_display: String = if value.is_empty() && !*focused {
+        let value_display: String = if value.is_empty() && !focused {
             placeholder.to_owned()
         } else {
             let mut display = (*value).clone();
             if *focused {
-                display.push('│'); // 光标
+                display.push('│');
             }
             display
         };
-        let value_style = if value.is_empty() && !*focused {
-            Style::default().fg(Color::DarkGray)
+        let value_style = if value.is_empty() && !focused {
+            Style::default().fg(MUTED)
         } else if *focused {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+            Style::default().fg(TEXT).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(TEXT)
         };
 
-        // 聚焦指示器
-        let marker = if *focused { "▸" } else { " " };
+        let marker = if *focused { ICON_SELECTED } else { ICON_UNSELECTED };
 
         lines.push(Line::from(vec![
             Span::styled(format!("  {marker} "), label_style),
@@ -482,7 +521,7 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
     // 校验错误
     if let Some(ref err) = form.error {
         lines.push(Line::from(vec![
-            Span::styled("  ✖ ", Style::default().fg(Color::Red)),
+            Span::styled(format!(" {} ", ICON_ERROR), Style::default().fg(Color::Red)),
             Span::styled(err.clone(), Style::default().fg(Color::Red)),
         ]));
     }
@@ -490,22 +529,37 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
     // 提示
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
-        Span::styled("  Tab ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "  Tab ",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("切换字段  "),
-        Span::styled("Enter ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Enter ",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(if is_edit { "保存" } else { "创建" }),
         Span::raw("  "),
-        Span::styled("Esc ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Esc ",
+            Style::default()
+                .fg(HIGHLIGHT_FG)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("取消"),
     ]));
 
     let paragraph = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(BORDER_FOCUSED))
             .title(Span::styled(
-                title,
-                Style::default().fg(Color::Cyan),
+                format!(" {title_icon} {title}"),
+                Style::default().fg(ACCENT),
             )),
     );
     f.render_widget(paragraph, area);
@@ -518,124 +572,116 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         Line::from(""),
         Line::styled(
             "  全局快捷键:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            section_title_style(),
         ),
         Line::from(vec![
-            Span::styled("    q / Ctrl+C", Style::default().fg(Color::Yellow)),
+            Span::styled("    q / Ctrl+C", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    退出 TUI"),
         ]),
         Line::from(vec![
-            Span::styled("    ?        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    ?        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    显示/关闭帮助"),
         ]),
         Line::from(""),
         Line::styled(
             "  任务列表视图:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            section_title_style(),
         ),
         Line::from(vec![
-            Span::styled("    ↑/j/k/↓  ", Style::default().fg(Color::Yellow)),
+            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    上下移动选中"),
         ]),
         Line::from(vec![
-            Span::styled("    Enter    ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    查看任务详情"),
         ]),
         Line::from(vec![
-            Span::styled("    n        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    n        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    新建任务"),
         ]),
         Line::from(vec![
-            Span::styled("    d        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    删除选中任务"),
         ]),
         Line::from(vec![
-            Span::styled("    r/Ctrl+R ", Style::default().fg(Color::Yellow)),
+            Span::styled("    r/Ctrl+R ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    刷新任务列表"),
         ]),
         Line::from(vec![
-            Span::styled("    /        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    /        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    搜索过滤"),
         ]),
         Line::from(vec![
-            Span::styled("    Tab      ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Tab      ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    切换排序方式"),
         ]),
         Line::from(vec![
-            Span::styled("    Home/End ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Home/End ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    跳转到首/末"),
         ]),
         Line::from(""),
         Line::styled(
             "  任务详情视图:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            section_title_style(),
         ),
         Line::from(vec![
-            Span::styled("    ↑/j/k/↓  ", Style::default().fg(Color::Yellow)),
+            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    上下移动条目"),
         ]),
         Line::from(vec![
-            Span::styled("    Space/x  ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Space/x  ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    切换条目完成状态"),
         ]),
         Line::from(vec![
-            Span::styled("    a        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    a        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    添加清单条目"),
         ]),
         Line::from(vec![
-            Span::styled("    N        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    N        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    添加笔记"),
         ]),
         Line::from(vec![
-            Span::styled("    D        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    D        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    删除笔记（需确认）"),
         ]),
         Line::from(vec![
-            Span::styled("    L        ", Style::default().fg(Color::Yellow)),
+            Span::styled("    L        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    添加资源链接"),
         ]),
         Line::from(vec![
-            Span::styled("    Ctrl+D   ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Ctrl+D   ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    删除当前任务（需确认）"),
         ]),
         Line::from(vec![
-            Span::styled("    Esc/←    ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Esc/←    ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    返回任务列表"),
         ]),
         Line::from(""),
         Line::styled(
             "  任务表单视图:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            section_title_style(),
         ),
         Line::from(vec![
-            Span::styled("    Tab      ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Tab      ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    切换到下一个字段"),
         ]),
         Line::from(vec![
-            Span::styled("    Shift+Tab", Style::default().fg(Color::Yellow)),
+            Span::styled("    Shift+Tab", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("切换到上一个字段"),
         ]),
         Line::from(vec![
-            Span::styled("    Enter    ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    提交表单（新建/保存）"),
         ]),
         Line::from(vec![
-            Span::styled("    Esc      ", Style::default().fg(Color::Yellow)),
+            Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    取消并返回"),
         ]),
         Line::from(""),
         Line::styled(
             "  按 Esc 或 ? 返回上一视图",
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(MUTED)
                 .add_modifier(Modifier::ITALIC),
         ),
     ];
@@ -644,8 +690,8 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray))
-                .title(Span::styled(" 帮助 ", Style::default().fg(Color::Cyan))),
+                .border_style(Style::default().fg(BORDER))
+                .title(Span::styled(" 帮助 ", Style::default().fg(ACCENT))),
         )
         .wrap(Wrap { trim: true });
     f.render_widget(paragraph, area);
@@ -654,17 +700,14 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
 // ── 删除确认对话框 ─────────────────────────────────────────────────────────
 
 fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
-    // 对话框尺寸
     let width = 50.min(area.width.saturating_sub(4));
     let height = 6;
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
     let dialog_area = Rect::new(x, y, width, height);
 
-    // 清除背景区域
     f.render_widget(Clear, dialog_area);
 
-    // 根据当前视图确定要显示的任务名称
     let task_name = app
         .current_task()
         .map(|t| truncate_str(&t.task_description, 30))
@@ -679,14 +722,26 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::styled(
             "  确认删除此任务？",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD),
         ),
         Line::from(format!("  {task_name}")),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" 确认  "),
-            Span::styled("n/Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "n/Esc",
+                Style::default()
+                    .fg(HIGHLIGHT_FG)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" 取消"),
         ]),
     ];
@@ -694,9 +749,9 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
     let paragraph = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red))
+            .border_style(Style::default().fg(BORDER_DANGER))
             .title(Span::styled(
-                " ⚠ 删除确认 ",
+                format!(" {} 删除确认 ", ICON_WARN),
                 Style::default().fg(Color::Red),
             )),
     );
@@ -725,14 +780,26 @@ fn draw_delete_note_confirm(f: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::styled(
             "  确认删除此笔记？",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD),
         ),
         Line::from(format!("  {note_preview}")),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" 确认  "),
-            Span::styled("n/Esc", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "n/Esc",
+                Style::default()
+                    .fg(HIGHLIGHT_FG)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" 取消"),
         ]),
     ];
@@ -740,9 +807,9 @@ fn draw_delete_note_confirm(f: &mut Frame, area: Rect, app: &App) {
     let paragraph = Paragraph::new(lines).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red))
+            .border_style(Style::default().fg(BORDER_DANGER))
             .title(Span::styled(
-                " ⚠ 删除笔记 ",
+                format!(" {} 删除笔记 ", ICON_WARN),
                 Style::default().fg(Color::Red),
             )),
     );
@@ -765,16 +832,4 @@ fn truncate_str(s: &str, max_len: usize) -> String {
         let truncated: String = chars[..max_len.saturating_sub(1)].iter().collect();
         format!("{truncated}…")
     }
-}
-
-/// 生成简易文本进度条。
-///
-/// 例如: "[████░░] 66%"
-fn progress_bar(pct: usize, width: usize) -> String {
-    if width < 2 {
-        return String::new();
-    }
-    let filled = pct * (width - 2) / 100;
-    let empty = (width - 2).saturating_sub(filled);
-    format!("[{}{}]", "█".repeat(filled), "░".repeat(empty))
 }
