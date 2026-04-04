@@ -3,7 +3,11 @@
 //! 为每个 MCP 工具定义强类型的参数结构体，
 //! 实现 `Deserialize` 用于 JSON 反序列化，`JsonSchema` 用于自动生成 inputSchema。
 
+use std::sync::Arc;
+
+use schemars::generate::SchemaSettings;
 use schemars::JsonSchema;
+use schemars::Schema;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -255,3 +259,208 @@ pub struct ListTasksParams {}
 /// `get_current_task_details` 参数（无额外参数）。
 #[derive(Debug, Deserialize, JsonSchema, Default)]
 pub struct GetCurrentTaskDetailsParams {}
+
+// ---------------------------------------------------------------------------
+// Schema 生成：内联所有 $ref，输出 MCP 客户端可直接使用的 schema
+// ---------------------------------------------------------------------------
+
+/// 为参数类型 `T` 生成完全内联的 JSON Schema。
+///
+/// rmcp 内部的 `schema_for_type` 使用 `inline_subschemas = false`，
+/// 会导致嵌套类型（如 `InitialChecklistItem`、`Action`）被放入 `$defs` 并通过 `$ref` 引用。
+/// 多数 MCP 客户端不支持 JSON Schema 引用解析，因此需要在此处：
+/// 1. 使用 `inline_subschemas = true` 重新生成 schema
+/// 2. 通过 `resolve_refs` 递归内联任何残留的 `$ref`
+/// 3. 清理 `$schema`、`$defs`、`title` 等多余字段
+///
+/// 返回 `Arc<Map<String, Value>>` 以匹配 rmcp 的 `input_schema` 类型要求。
+pub fn json_schema_for<T: JsonSchema>() -> Arc<serde_json::Map<String, serde_json::Value>> {
+    let mut settings = SchemaSettings::draft2020_12();
+    settings.inline_subschemas = true;
+
+    let generator = settings.into_generator();
+    let schema: Schema = generator.into_root_schema_for::<T>();
+    let mut schema = serde_json::to_value(&schema).expect("schema serialization failed");
+
+    // 1. 递归内联所有 $ref（安全网，处理 inline_subschemas 未覆盖的边界情况）
+    resolve_refs(&mut schema);
+
+    // 2. 清理顶层多余字段
+    if let Some(obj) = schema.as_object_mut() {
+        obj.remove("$schema");
+        obj.remove("$defs");
+        obj.remove("title");
+    }
+
+    Arc::new(schema.as_object().cloned().unwrap_or_default())
+}
+
+/// 递归将所有 `$ref` 引用内联展开，并清理 `definitions`、`allOf` 包裹、`title`。
+///
+/// 处理三种模式：
+/// - `{"$ref": "#/$defs/X"}` 或 `{"$ref": "#/definitions/X"}` → 内联替换为 X 的定义
+/// - `{"allOf": [schema]}` → 单元素 allOf 直接展开
+/// - 递归处理所有嵌套的对象和数组
+fn resolve_refs(schema: &mut serde_json::Value) {
+    match schema {
+        serde_json::Value::Object(map) => {
+            // 模式 1: 纯 $ref → 查找并内联
+            if map.len() == 1 {
+                if let Some(serde_json::Value::String(ref_uri)) = map.get("$ref") {
+                    let def_name = extract_def_name(ref_uri);
+                    if let Some(inline) =
+                        find_definition(&serde_json::Value::Object(map.clone()), &def_name)
+                    {
+                        *schema = inline;
+                        // 内联后继续处理（可能还有嵌套 $ref）
+                        resolve_refs(schema);
+                        return;
+                    }
+                }
+            }
+
+            // 模式 2: 单元素 allOf → 展开
+            if let Some(serde_json::Value::Array(arr)) = map.get("allOf") {
+                if arr.len() == 1 {
+                    let inner = arr[0].clone();
+                    *schema = inner;
+                    resolve_refs(schema);
+                    return;
+                }
+            }
+
+            // 递归处理对象中所有值
+            for value in map.values_mut() {
+                resolve_refs(value);
+            }
+
+            // 清理多余字段
+            map.remove("title");
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                resolve_refs(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 从 `$ref` URI 中提取定义名称。
+///
+/// 支持格式：
+/// - `#/$defs/TypeName`
+/// - `#/definitions/TypeName`
+fn extract_def_name(ref_uri: &str) -> String {
+    ref_uri.split('/').last().unwrap_or("").to_string()
+}
+
+/// 在 schema 的 `$defs` 或 `definitions` 中查找指定名称的定义。
+///
+/// 注意：由于我们使用 `inline_subschemas = true`，正常情况下不应有 `$defs`。
+/// 此函数仅作为安全网。
+fn find_definition(schema: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
+    if let Some(obj) = schema.as_object() {
+        if let Some(serde_json::Value::Object(defs)) = obj.get("$defs") {
+            if let Some(def) = defs.get(name) {
+                return Some(def.clone());
+            }
+        }
+        if let Some(serde_json::Value::Object(defs)) = obj.get("definitions") {
+            if let Some(def) = defs.get(name) {
+                return Some(def.clone());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_task_schema_has_no_refs() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        let schema_str = serde_json::to_string(&schema).unwrap();
+        assert!(
+            !schema_str.contains("$ref"),
+            "schema should not contain $ref: {schema_str}"
+        );
+        assert!(
+            !schema_str.contains("$defs"),
+            "schema should not contain $defs: {schema_str}"
+        );
+        assert!(
+            !schema_str.contains("definitions"),
+            "schema should not contain definitions: {schema_str}"
+        );
+    }
+
+    #[test]
+    fn manage_checklist_item_schema_has_no_refs() {
+        let schema = json_schema_for::<ManageChecklistItemParams>();
+        let schema_str = serde_json::to_string(&schema).unwrap();
+        assert!(
+            !schema_str.contains("$ref"),
+            "schema should not contain $ref: {schema_str}"
+        );
+        assert!(
+            !schema_str.contains("$defs"),
+            "schema should not contain $defs: {schema_str}"
+        );
+    }
+
+    #[test]
+    fn new_task_schema_has_inline_checklist_item() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        let schema_str = serde_json::to_string(&schema).unwrap();
+        // 内联后应包含 InitialChecklistItem 的字段
+        assert!(
+            schema_str.contains("detailed_description"),
+            "should contain inline checklist item fields"
+        );
+        assert!(
+            schema_str.contains("context_and_plan"),
+            "should contain inline checklist item fields"
+        );
+    }
+
+    #[test]
+    fn manage_checklist_item_schema_has_inline_action_enum() {
+        let schema = json_schema_for::<ManageChecklistItemParams>();
+        let schema_str = serde_json::to_string(&schema).unwrap();
+        // 内联后应包含 Action 枚举的值
+        assert!(
+            schema_str.contains("add"),
+            "should contain inline action enum values"
+        );
+        assert!(
+            schema_str.contains("update"),
+            "should contain inline action enum values"
+        );
+        assert!(
+            schema_str.contains("reorder"),
+            "should contain inline action enum values"
+        );
+        assert!(
+            schema_str.contains("remove"),
+            "should contain inline action enum values"
+        );
+    }
+
+    #[test]
+    fn schema_is_valid_object() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert!(schema.contains_key("properties"));
+        assert!(schema.contains_key("required"));
+    }
+
+    #[test]
+    fn extract_def_name_parses_correctly() {
+        assert_eq!(extract_def_name("#/$defs/MyType"), "MyType");
+        assert_eq!(extract_def_name("#/definitions/MyType"), "MyType");
+        assert_eq!(extract_def_name("#/$defs/NestedType"), "NestedType");
+    }
+}

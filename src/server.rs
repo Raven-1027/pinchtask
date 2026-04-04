@@ -103,7 +103,8 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "new_task",
-        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints)."
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints).",
+        input_schema = crate::tools::params::json_schema_for::<InitializeTaskParams>()
     )]
     pub async fn new_task(
         &self,
@@ -235,7 +236,8 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "manage_checklist_item",
-        description = "Perform operations on checklist items. Select the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations."
+        description = "Perform operations on checklist items. Select the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations.",
+        input_schema = crate::tools::params::json_schema_for::<ManageChecklistItemParams>()
     )]
     pub async fn manage_checklist_item(
         &self,
