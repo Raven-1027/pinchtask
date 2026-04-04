@@ -99,13 +99,13 @@ fn void_result(
 #[tool_router]
 impl PinchTaskServer {
     // ------------------------------------------------------------------
-    // 1. initialize_task
+    // 1. new_task
     // ------------------------------------------------------------------
     #[tool(
-        name = "init_task",
+        name = "new_task",
         description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints)."
     )]
-    pub async fn initialize_task(
+    pub async fn new_task(
         &self,
         Parameters(params): Parameters<InitializeTaskParams>,
     ) -> Result<CallToolResult, ErrorData> {

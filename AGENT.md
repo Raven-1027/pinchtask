@@ -107,7 +107,7 @@ pinchtask/
 
 | 工具名                     | 功能                                        |
 | -------------------------- | ------------------------------------------- |
-| `initialize_task`          | 创建新任务（支持初始清单/笔记/资源/元数据） |
+| `new_task`                 | 创建新任务（支持初始清单/笔记/资源/元数据） |
 | `update_task`              | 统一更新多个任务字段                        |
 | `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）|
 | `add_note`                 | 添加笔记                                    |

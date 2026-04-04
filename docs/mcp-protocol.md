@@ -33,7 +33,7 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 | 工具名 | 类别 | 说明 |
 |--------|------|------|
-| `initialize_task` | 任务 | 创建新任务 |
+| `new_task` | 任务 | 创建新任务 |
 | `update_task` | 任务 | 统一更新任务字段 |
 | `manage_checklist_item` | 清单 | 统一管理清单条目（add/update/reorder/remove） |
 | `clear_task` | 任务 | 删除任务 |
@@ -47,7 +47,7 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 ## 工具详细说明
 
-### initialize_task
+### new_task
 
 创建一个新任务。
 
