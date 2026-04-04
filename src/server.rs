@@ -157,7 +157,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_task",
-        description = "Update multiple task fields at once: description, context, priority, tags, and/or eta. Only specified fields are modified. Usage: Prefer this over individual field-update tools when modifying multiple fields in one call to reduce round-trips. At least one field must be specified."
+        description = "Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. At least one field must be specified."
     )]
     pub async fn update_task(
         &self,
@@ -257,7 +257,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_checklist_item",
-        description = "Update an existing checklist item. Usage: Only specified fields are modified. Note: omitting context_and_plan keeps the original value, while passing null clears it. Use index (0-based) to identify the item."
+        description = "Update an existing checklist item, including marking it done or undone. Usage: Only specified fields are modified. Set done=true to mark completed, done=false to revert. Note: omitting context_and_plan keeps the original value, while passing null clears it. Use index (0-based) to identify the item."
     )]
     pub async fn update_checklist_item(
         &self,
