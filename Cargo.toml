@@ -7,7 +7,7 @@ edition = "2021"
 license = "MIT"
 keywords = ["mcp", "task-manager", "agent", "workflow", "ai"]
 categories = ["command-line-utilities", "development-tools"]
-repository = "https://github.com/ravenxrq/pinchtask"
+repository = "https://github.com/Raven-1027/pinchtask"
 readme = "README.md"
 
 [dependencies]
