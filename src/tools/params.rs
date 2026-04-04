@@ -124,64 +124,88 @@ pub struct UpdateTaskParams {
     pub eta: Option<String>,
 }
 
+/// Action type for checklist item operations.
+///
+/// Serialized as lowercase strings: "add", "update", "reorder", "remove".
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Action {
+    /// Append a new item to the end of the checklist.
+    Add,
+    /// Modify an existing item's fields. Only specified fields are changed.
+    Update,
+    /// Move an item to a new position. After reordering, indices change.
+    Reorder,
+    /// Delete an item. After removal, subsequent indices shift down by 1.
+    Remove,
+}
+
 /// `manage_checklist_item` 参数。
 ///
-/// 使用 serde internally tagged enum，每个 action 有独立的参数 schema。
-/// agent 通过 `action` 字段选择操作类型。
+/// 扁平结构，所有操作共享一个 struct，通过 `action` 字段区分操作类型。
+/// `action` 是必填字段，其他字段根据 action 类型有不同含义。
 #[derive(Debug, Deserialize, JsonSchema)]
-#[serde(tag = "action")]
-pub enum ManageChecklistItemParams {
-    /// Append a new checklist item to the end of the checklist.
-    Add {
-        #[schemars(description = "The ID of the task")]
-        task_id: String,
-        #[schemars(description = "A short yet comprehensive name for the item")]
-        task: String,
-        #[schemars(description = "A longer description about what we want to achieve")]
-        detailed_description: String,
-        #[serde(default)]
-        #[schemars(description = "Related information and a detailed plan")]
-        context_and_plan: Option<String>,
-    },
-    /// Update fields of an existing checklist item. Only specified fields are modified.
-    /// Set done=true to mark completed, done=false to mark undone.
-    Update {
-        #[schemars(description = "The ID of the task")]
-        task_id: String,
-        #[schemars(description = "0-based index of the checklist item to update")]
-        index: u64,
-        #[serde(default)]
-        #[schemars(description = "New short name")]
-        task: Option<String>,
-        #[serde(default)]
-        #[schemars(description = "New detailed description")]
-        detailed_description: Option<String>,
-        /// 三态语义：字段未传入 → `None` → 不修改；传入 `null` → `Some(None)` → 清空；传入字符串 → `Some(Some("..."))` → 更新。
-        #[serde(default)]
-        #[schemars(description = "New context and plan (pass null to clear)")]
-        context_and_plan: Option<Option<String>>,
-        #[serde(default)]
-        #[schemars(description = "Whether the item is completed")]
-        done: Option<bool>,
-    },
-    /// Move a checklist item to a new position.
-    /// After reordering, item indices change — refresh task data before further index-based operations.
-    Reorder {
-        #[schemars(description = "The ID of the task")]
-        task_id: String,
-        #[schemars(description = "Current 0-based index")]
-        from_index: u64,
-        #[schemars(description = "New 0-based index")]
-        to_index: u64,
-    },
-    /// Remove a checklist item from the task.
-    /// After removal, subsequent item indices shift down by 1.
-    Remove {
-        #[schemars(description = "The ID of the task")]
-        task_id: String,
-        #[schemars(description = "0-based index of the checklist item to remove")]
-        index: u64,
-    },
+pub struct ManageChecklistItemParams {
+    /// The operation to perform. Must be one of: "add", "update", "reorder", "remove".
+    #[schemars(
+        description = "The operation to perform. Must be one of: \"add\", \"update\", \"reorder\", \"remove\""
+    )]
+    pub action: Action,
+
+    #[schemars(description = "The ID of the task")]
+    pub task_id: String,
+
+    // --- Add 专用 ---
+    #[serde(default)]
+    #[schemars(description = "A short yet comprehensive name for the item (required for Add)")]
+    pub task: Option<String>,
+    #[serde(default)]
+    #[schemars(
+        description = "A longer description about what we want to achieve (required for Add)"
+    )]
+    pub detailed_description: Option<String>,
+
+    // --- Update / Remove 专用 ---
+    #[serde(default)]
+    #[schemars(description = "0-based index of the checklist item (required for Update/Remove)")]
+    pub index: Option<u64>,
+
+    // --- Reorder 专用 ---
+    #[serde(default)]
+    #[schemars(description = "Current 0-based index (required for Reorder)")]
+    pub from_index: Option<u64>,
+    #[serde(default)]
+    #[schemars(description = "New 0-based index (required for Reorder)")]
+    pub to_index: Option<u64>,
+
+    // --- Update 专用 ---
+    /// 三态语义：字段未传入 → `None` → 不修改；传入 `null` → `Some(None)` → 清空；传入字符串 → `Some(Some("..."))` → 更新。
+    #[serde(default)]
+    #[schemars(
+        description = "Related information and a detailed plan (pass null to clear, omit to keep unchanged)"
+    )]
+    pub context_and_plan: Option<Option<String>>,
+    #[serde(default)]
+    #[schemars(
+        description = "Whether the item is completed (for Update only). true=done, false=undone"
+    )]
+    pub done: Option<bool>,
+}
+
+impl Default for ManageChecklistItemParams {
+    fn default() -> Self {
+        Self {
+            action: Action::Add,
+            task_id: String::new(),
+            task: None,
+            detailed_description: None,
+            index: None,
+            from_index: None,
+            to_index: None,
+            context_and_plan: None,
+            done: None,
+        }
+    }
 }
 
 /// `add_note` 参数。

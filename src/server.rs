@@ -241,16 +241,18 @@ impl PinchTaskServer {
         &self,
         Parameters(params): Parameters<ManageChecklistItemParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        match params {
-            ManageChecklistItemParams::Add {
-                task_id,
-                task,
-                detailed_description,
-                context_and_plan,
-            } => {
+        match params.action {
+            Action::Add => {
+                let task = params.task.ok_or_else(|| {
+                    ErrorData::invalid_params("task is required for add action", None)
+                })?;
+                let detailed_description = params.detailed_description.ok_or_else(|| {
+                    ErrorData::invalid_params("detailed_description is required for add action", None)
+                })?;
+                let context_and_plan = params.context_and_plan.flatten();
                 core::add_checklist_item(
                     &self.store,
-                    &task_id,
+                    &params.task_id,
                     &task,
                     &detailed_description,
                     context_and_plan.as_deref(),
@@ -258,42 +260,43 @@ impl PinchTaskServer {
                 .await
                 .into_tool_result(|t| task_to_result(&t))
             }
-            ManageChecklistItemParams::Update {
-                task_id,
-                index,
-                task,
-                detailed_description,
-                context_and_plan,
-                done,
-            } => {
+            Action::Update => {
+                let index = params.index.ok_or_else(|| {
+                    ErrorData::invalid_params("index is required for update action", None)
+                })? as usize;
                 core::update_checklist_item(
                     &self.store,
-                    &task_id,
-                    index as usize,
-                    task.as_deref(),
-                    detailed_description.as_deref(),
-                    context_and_plan.as_ref().map(|o| o.as_deref()),
-                    done,
+                    &params.task_id,
+                    index,
+                    params.task.as_deref(),
+                    params.detailed_description.as_deref(),
+                    params.context_and_plan.as_ref().map(|o| o.as_deref()),
+                    params.done,
                 )
                 .await
                 .into_tool_result(|t| task_to_result(&t))
             }
-            ManageChecklistItemParams::Reorder {
-                task_id,
-                from_index,
-                to_index,
-            } => {
+            Action::Reorder => {
+                let from_index = params.from_index.ok_or_else(|| {
+                    ErrorData::invalid_params("from_index is required for reorder action", None)
+                })? as usize;
+                let to_index = params.to_index.ok_or_else(|| {
+                    ErrorData::invalid_params("to_index is required for reorder action", None)
+                })? as usize;
                 core::reorder_checklist_item(
                     &self.store,
-                    &task_id,
-                    from_index as usize,
-                    to_index as usize,
+                    &params.task_id,
+                    from_index,
+                    to_index,
                 )
                 .await
                 .into_tool_result(|t| task_to_result(&t))
             }
-            ManageChecklistItemParams::Remove { task_id, index } => {
-                core::remove_checklist_item(&self.store, &task_id, index as usize)
+            Action::Remove => {
+                let index = params.index.ok_or_else(|| {
+                    ErrorData::invalid_params("index is required for remove action", None)
+                })? as usize;
+                core::remove_checklist_item(&self.store, &params.task_id, index)
                     .await
                     .into_tool_result(|t| task_to_result(&t))
             }

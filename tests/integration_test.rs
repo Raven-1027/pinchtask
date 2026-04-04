@@ -213,11 +213,13 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 添加检查项
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Add {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Add,
             task_id: task_id.clone(),
-            task: "步骤一".to_owned(),
-            detailed_description: "完成第一步操作".to_owned(),
-            context_and_plan: Some("参考文档A".to_owned()),
+            task: Some("步骤一".to_owned()),
+            detailed_description: Some("完成第一步操作".to_owned()),
+            context_and_plan: Some(Some("参考文档A".to_owned())),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -231,13 +233,12 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 标记完成
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id: task_id.clone(),
-            index: 0,
-            task: None,
-            detailed_description: None,
-            context_and_plan: None,
+            index: Some(0),
             done: Some(true),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -313,13 +314,12 @@ async fn test_mark_done_and_get_summary() {
 
     // 标记第一个完成
     server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id: task_id.clone(),
-            index: 0,
-            task: None,
-            detailed_description: None,
-            context_and_plan: None,
+            index: Some(0),
             done: Some(true),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -502,13 +502,12 @@ async fn test_clear_task_deletes_task() {
 
     // 后续操作该任务应返回错误
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id,
-            index: 0,
-            task: None,
-            detailed_description: None,
-            context_and_plan: None,
+            index: Some(0),
             done: Some(true),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -558,10 +557,12 @@ async fn test_reorder_checklist_item() {
 
     // 把 index 0 移到 index 2
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Reorder {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Reorder,
             task_id: task_id.clone(),
-            from_index: 0,
-            to_index: 2,
+            from_index: Some(0),
+            to_index: Some(2),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -609,9 +610,11 @@ async fn test_remove_checklist_item() {
     let task_id = task["id"].as_str().unwrap().to_owned();
 
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Remove {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Remove,
             task_id: task_id.clone(),
-            index: 1,
+            index: Some(1),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -794,13 +797,12 @@ async fn test_mark_undone() {
     assert_eq!(task["checklist"][0]["done"], true);
 
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id,
-            index: 0,
-            task: None,
-            detailed_description: None,
-            context_and_plan: None,
+            index: Some(0),
             done: Some(false),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -836,13 +838,12 @@ async fn test_update_checklist_item_partial() {
 
     // 只更新 task 名称
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id: task_id.clone(),
-            index: 0,
+            index: Some(0),
             task: Some("新名称".to_owned()),
-            detailed_description: None,
-            context_and_plan: None,
-            done: None,
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -858,13 +859,12 @@ async fn test_update_checklist_item_partial() {
 
     // 用 null 清空 context_and_plan
     let result = server
-        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams {
+            action: Action::Update,
             task_id,
-            index: 0,
-            task: None,
-            detailed_description: None,
+            index: Some(0),
             context_and_plan: Some(None), // 传入 null
-            done: None,
+            ..Default::default()
         }))
         .await
         .unwrap();
