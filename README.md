@@ -1,6 +1,7 @@
 # pinchtask
 
-Warning: 几乎所有代码都由 GLM-5-Turbo 生成, 本程序按原样提供 不做任何保障.
+> [!WARNING]  
+> 几乎所有代码都由 GLM-5-Turbo 生成, 本程序按原样提供 不做任何保障.
 
 基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。
 
