@@ -168,7 +168,7 @@ Task {
 - 9 个 MCP 工具全部注册
 - 存储层从 JSON 文件迁移到 SQLite + sqlx（异步）
 - 完整的交互式 TUI 界面（ratatui + crossterm），支持任务列表、详情、创建/编辑表单
-- 145 个测试（142 通过 + 3 个 TUI theme 预存失败）
+- 165 个测试全部通过（145 单元测试 + 20 集成测试）
 - tools/params 模块包含 6 个 schema 内联验证测试
 - TUI 模块包含 55+ 个单元测试（FormField、SortMode、TaskFormState、主题函数）
 - 双格式 stdio 传输（换行分隔 JSON + Content-Length 头）
@@ -178,7 +178,7 @@ Task {
 
 ### ⚠️ 已知问题
 
-- 3 个 TUI theme 测试失败（`progress_bar_plain_length`、`separator_length`、`separator_minimum_length`），与功能逻辑无关，属预存问题
+无
 
 ## 开发注意事项
 
