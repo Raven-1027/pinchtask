@@ -124,24 +124,6 @@ pub struct UpdateTaskParams {
     pub eta: Option<String>,
 }
 
-/// `update_task_description` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateTaskDescriptionParams {
-    #[schemars(description = "The ID of the task to update")]
-    pub task_id: String,
-    #[schemars(description = "The new task description")]
-    pub task_description: String,
-}
-
-/// `update_context` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateContextParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "The new context information")]
-    pub context_for_all_tasks: String,
-}
-
 /// `add_checklist_item` 参数。
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AddChecklistItemParams {
@@ -180,24 +162,6 @@ pub struct UpdateChecklistItemParams {
     #[serde(default)]
     #[schemars(description = "Whether the item is completed")]
     pub done: Option<bool>,
-}
-
-/// `mark_task_done` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct MarkTaskDoneParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "0-based index of the checklist item")]
-    pub index: u64,
-}
-
-/// `mark_task_undone` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct MarkTaskUndoneParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "0-based index of the checklist item")]
-    pub index: u64,
 }
 
 /// `reorder_checklist_item` 参数。
@@ -241,15 +205,6 @@ pub struct AddResourceParams {
     #[serde(default)]
     #[schemars(description = "Description of the resource")]
     pub description: Option<String>,
-}
-
-/// `update_metadata` 参数。
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateMetadataParams {
-    #[schemars(description = "The ID of the task")]
-    pub task_id: String,
-    #[schemars(description = "The metadata object to set")]
-    pub metadata: TaskMetadataInput,
 }
 
 /// `get_checklist_summary` 参数。

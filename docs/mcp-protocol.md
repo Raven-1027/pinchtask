@@ -29,23 +29,18 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 ## 工具总览
 
-共注册 **17 个工具**：
+共注册 **12 个工具**：
 
 | 工具名 | 类别 | 说明 |
 |--------|------|------|
 | `initialize_task` | 任务 | 创建新任务 |
 | `update_task` | 任务 | 统一更新任务字段 |
-| `update_task_description` | 任务 | 更新任务描述 |
-| `update_context` | 任务 | 更新共享上下文 |
-| `update_metadata` | 任务 | 更新元数据 |
 | `clear_task` | 任务 | 删除任务 |
 | `get_checklist_summary` | 查询 | 获取清单概要 |
 | `list_tasks` | 查询 | 列出所有任务 |
 | `get_current_task_details` | 查询 | 获取当前子任务详情 |
 | `add_checklist_item` | 清单 | 添加清单条目 |
 | `update_checklist_item` | 清单 | 更新清单条目 |
-| `mark_task_done` | 清单 | 标记完成 |
-| `mark_task_undone` | 清单 | 标记未完成 |
 | `reorder_checklist_item` | 清单 | 重排条目顺序 |
 | `remove_checklist_item` | 清单 | 删除条目 |
 | `add_note` | 笔记 | 添加笔记 |
@@ -103,37 +98,6 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 **返回**：更新后的完整 Task 对象。
 
----
-
-### update_task_description
-
-更新任务的描述。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `task_description` | string | ✅ | 新的描述 |
-
-**返回**：更新后的完整 Task 对象。
-
----
-
-### update_context
-
-更新所有子任务的共享上下文。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `context_for_all_tasks` | string | ✅ | 新的上下文信息 |
-
-**返回**：更新后的完整 Task 对象。
-
----
 
 ### add_checklist_item
 
@@ -168,36 +132,6 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 | `done` | boolean | ❌ | 完成状态 |
 
 > `context_and_plan` 不传与传 `null` 语义不同：不传 = 保持原值，传 `null` = 清空。
-
-**返回**：更新后的完整 Task 对象。
-
----
-
-### mark_task_done
-
-将指定清单条目标记为已完成。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
-
-**返回**：更新后的完整 Task 对象。
-
----
-
-### mark_task_undone
-
-将指定清单条目标记为未完成。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
 
 **返回**：更新后的完整 Task 对象。
 
@@ -264,25 +198,6 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 **返回**：更新后的完整 Task 对象。
 
----
-
-### update_metadata
-
-更新任务元数据（标签、优先级、预计完成时间）。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `metadata` | object | ✅ | 元数据对象 |
-| `metadata.tags` | string[] | ❌ | 标签列表 |
-| `metadata.priority` | string | ❌ | 优先级 (`"high"` / `"medium"` / `"low"`) |
-| `metadata.estimated_completion_time` | string | ❌ | 预计完成时间 |
-
-**返回**：更新后的完整 Task 对象。
-
----
 
 ### get_checklist_summary
 

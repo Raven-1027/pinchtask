@@ -103,23 +103,18 @@ pinchtask/
 
 ## 核心功能
 
-### MCP 工具（17 个）
+### MCP 工具（12 个）
 
 | 工具名                     | 功能                                        |
 | -------------------------- | ------------------------------------------- |
 | `initialize_task`          | 创建新任务（支持初始清单/笔记/资源/元数据） |
 | `update_task`              | 统一更新多个任务字段                        |
-| `update_task_description`  | 更新任务描述                                |
-| `update_context`           | 更新共享上下文                              |
 | `add_checklist_item`       | 添加清单条目                                |
 | `update_checklist_item`    | 更新清单条目                                |
-| `mark_task_done`           | 标记条目完成                                |
-| `mark_task_undone`         | 标记条目未完成                              |
 | `reorder_checklist_item`   | 移动条目顺序                                |
 | `remove_checklist_item`    | 删除清单条目                                |
 | `add_note`                 | 添加笔记                                    |
 | `add_resource`             | 添加资源引用                                |
-| `update_metadata`          | 更新元数据（标签/优先级/预计时间）          |
 | `get_checklist_summary`    | 获取清单进度摘要                            |
 | `clear_task`               | 删除任务                                    |
 | `list_tasks`               | 列出所有任务                                |

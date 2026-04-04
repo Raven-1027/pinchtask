@@ -53,23 +53,18 @@ async fn test_get_info_returns_correct_server_info() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_all_17_tools_registered() {
+async fn test_all_12_tools_registered() {
     let (server, _dir) = test_server().await;
 
     let expected_tools = [
         "initialize_task",
         "update_task",
-        "update_task_description",
-        "update_context",
         "add_checklist_item",
         "update_checklist_item",
-        "mark_task_done",
-        "mark_task_undone",
         "reorder_checklist_item",
         "remove_checklist_item",
         "add_note",
         "add_resource",
-        "update_metadata",
         "get_checklist_summary",
         "clear_task",
         "list_tasks",
@@ -236,9 +231,13 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 标记完成
     let result = server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .update_checklist_item(Parameters(UpdateChecklistItemParams {
             task_id: task_id.clone(),
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -314,9 +313,13 @@ async fn test_mark_done_and_get_summary() {
 
     // 标记第一个完成
     server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .update_checklist_item(Parameters(UpdateChecklistItemParams {
             task_id: task_id.clone(),
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -499,9 +502,13 @@ async fn test_clear_task_deletes_task() {
 
     // 后续操作该任务应返回错误
     let result = server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .update_checklist_item(Parameters(UpdateChecklistItemParams {
             task_id,
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -686,13 +693,13 @@ async fn test_update_metadata() {
     let task_id = task["id"].as_str().unwrap().to_owned();
 
     let result = server
-        .update_metadata(Parameters(UpdateMetadataParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id,
-            metadata: TaskMetadataInput {
-                tags: Some(vec!["rust".to_owned(), "mcp".to_owned()]),
-                priority: Some("high".to_owned()),
-                estimated_completion_time: Some("2025-12-31".to_owned()),
-            },
+            task_description: None,
+            context_for_all_tasks: None,
+            priority: Some("high".to_owned()),
+            tags: Some("rust,mcp".to_owned()),
+            eta: Some("2025-12-31".to_owned()),
         }))
         .await
         .unwrap();
@@ -729,9 +736,13 @@ async fn test_update_context_and_description() {
 
     // 更新上下文
     let result = server
-        .update_context(Parameters(UpdateContextParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id: task_id.clone(),
-            context_for_all_tasks: "新上下文".to_owned(),
+            task_description: None,
+            context_for_all_tasks: Some("新上下文".to_owned()),
+            priority: None,
+            tags: None,
+            eta: None,
         }))
         .await
         .unwrap();
@@ -741,9 +752,13 @@ async fn test_update_context_and_description() {
 
     // 更新描述
     let result = server
-        .update_task_description(Parameters(UpdateTaskDescriptionParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id,
-            task_description: "新描述".to_owned(),
+            task_description: Some("新描述".to_owned()),
+            context_for_all_tasks: None,
+            priority: None,
+            tags: None,
+            eta: None,
         }))
         .await
         .unwrap();
@@ -779,9 +794,13 @@ async fn test_mark_undone() {
     assert_eq!(task["checklist"][0]["done"], true);
 
     let result = server
-        .mark_task_undone(Parameters(MarkTaskUndoneParams {
+        .update_checklist_item(Parameters(UpdateChecklistItemParams {
             task_id,
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(false),
         }))
         .await
         .unwrap();
