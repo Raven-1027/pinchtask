@@ -1776,3 +1776,324 @@ fn priority_rank(priority: Option<&str>) -> u8 {
         _ => 0,
     }
 }
+
+// ── 单元测试 ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── FormField 测试 ────────────────────────────────────────────────────
+
+    #[test]
+    fn form_field_order_completeness() {
+        // 确保 ORDER 覆盖所有变体（编译时也保证，但额外验证长度）
+        assert_eq!(FormField::ORDER.len(), 5);
+    }
+
+    #[test]
+    fn form_field_next_cycles() {
+        // 从每个字段调用 next()，最后一个应循环回第一个
+        let fields= FormField::ORDER;
+        for (i, field) in fields.iter().enumerate() {
+            let next = field.next();
+            let expected = fields[(i + 1) % fields.len()];
+            assert_eq!(next, expected, "FormField::next({i}) 循环错误");
+        }
+    }
+
+    #[test]
+    fn form_field_prev_cycles() {
+        let fields = FormField::ORDER;
+        for (i, field) in fields.iter().enumerate() {
+            let prev = field.prev();
+            let expected = if i == 0 {
+                fields[fields.len() - 1]
+            } else {
+                fields[i - 1]
+            };
+            assert_eq!(prev, expected, "FormField::prev({i}) 循环错误");
+        }
+    }
+
+    #[test]
+    fn form_field_next_prev_inverse() {
+        // 连续 next+prev 应回到原字段
+        for field in FormField::ORDER {
+            assert_eq!(field.next().prev(), field);
+            assert_eq!(field.prev().next(), field);
+        }
+    }
+
+    #[test]
+    fn form_field_labels_non_empty() {
+        for field in FormField::ORDER {
+            assert!(!field.label().is_empty(), "label 不应为空");
+        }
+    }
+
+    #[test]
+    fn form_field_placeholders_non_empty() {
+        for field in FormField::ORDER {
+            assert!(!field.placeholder().is_empty(), "placeholder 不应为空");
+        }
+    }
+
+    #[test]
+    fn form_field_next_full_cycle() {
+        // 连续调用 5 次 next() 回到起点
+        let start = FormField::Description;
+        let mut current = start;
+        for _ in 0..5 {
+            current = current.next();
+        }
+        assert_eq!(current, start);
+    }
+
+    #[test]
+    fn form_field_prev_full_cycle() {
+        let start = FormField::Description;
+        let mut current = start;
+        for _ in 0..5 {
+            current = current.prev();
+        }
+        assert_eq!(current, start);
+    }
+
+    // ── SortMode 测试 ─────────────────────────────────────────────────────
+
+    #[test]
+    fn sort_mode_next_cycles() {
+        assert_eq!(SortMode::Created.next(), SortMode::Priority);
+        assert_eq!(SortMode::Priority.next(), SortMode::Updated);
+        assert_eq!(SortMode::Updated.next(), SortMode::Created);
+    }
+
+    #[test]
+    fn sort_mode_next_full_cycle() {
+        let start = SortMode::Created;
+        let mut current = start;
+        for _ in 0..3 {
+            current = current.next();
+        }
+        assert_eq!(current, start);
+    }
+
+    #[test]
+    fn sort_mode_labels() {
+        assert_eq!(SortMode::Created.label(), "创建时间");
+        assert_eq!(SortMode::Priority.label(), "优先级");
+        assert_eq!(SortMode::Updated.label(), "更新时间");
+    }
+
+    #[test]
+    fn sort_mode_labels_non_empty() {
+        let modes = [SortMode::Created, SortMode::Priority, SortMode::Updated];
+        for mode in modes {
+            assert!(!mode.label().is_empty());
+        }
+    }
+
+    // ── priority_rank 测试 ────────────────────────────────────────────────
+
+    #[test]
+    fn priority_rank_values() {
+        assert_eq!(priority_rank(Some("high")), 3);
+        assert_eq!(priority_rank(Some("medium")), 2);
+        assert_eq!(priority_rank(Some("low")), 1);
+        assert_eq!(priority_rank(None), 0);
+    }
+
+    #[test]
+    fn priority_rank_unknown_string_is_zero() {
+        assert_eq!(priority_rank(Some("unknown")), 0);
+        assert_eq!(priority_rank(Some("")), 0);
+        assert_eq!(priority_rank(Some("HIGH")), 0); // 大小写敏感
+    }
+
+    #[test]
+    fn priority_rank_ordering() {
+        // high > medium > low > none
+        assert!(priority_rank(Some("high")) > priority_rank(Some("medium")));
+        assert!(priority_rank(Some("medium")) > priority_rank(Some("low")));
+        assert!(priority_rank(Some("low")) > priority_rank(None));
+    }
+
+    // ── TaskFormState 测试 ────────────────────────────────────────────────
+
+    #[test]
+    fn form_state_new_create_defaults() {
+        let form = TaskFormState::new_create();
+        assert_eq!(form.mode, FormMode::Create);
+        assert!(form.editing_task_id.is_none());
+        assert!(form.description.is_empty());
+        assert!(form.context.is_empty());
+        assert!(form.priority.is_empty());
+        assert!(form.tags.is_empty());
+        assert!(form.eta.is_empty());
+        assert_eq!(form.focused_field, FormField::Description);
+        assert!(form.error.is_none());
+    }
+
+    #[test]
+    fn form_state_validate_empty_description_fails() {
+        let form = TaskFormState::new_create();
+        let result = form.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "任务描述不能为空");
+    }
+
+    #[test]
+    fn form_state_validate_whitespace_description_fails() {
+        let mut form = TaskFormState::new_create();
+        form.description = "   \t  ".to_owned();
+        assert!(form.validate().is_err());
+    }
+
+    #[test]
+    fn form_state_validate_invalid_priority_fails() {
+        let mut form = TaskFormState::new_create();
+        form.description = "有效描述".to_owned();
+        form.priority = "urgent".to_owned();
+        let result = form.validate();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "优先级必须是 high / medium / low");
+    }
+
+    #[test]
+    fn form_state_validate_valid_priorities() {
+        for p in &["high", "medium", "low", "High", "MEDIUM", "LOW"] {
+            let mut form = TaskFormState::new_create();
+            form.description = "有效描述".to_owned();
+            form.priority = p.to_string();
+            assert!(form.validate().is_ok(), "优先级 '{p}' 应该通过校验");
+        }
+    }
+
+    #[test]
+    fn form_state_validate_empty_priority_ok() {
+        let mut form = TaskFormState::new_create();
+        form.description = "有效描述".to_owned();
+        form.priority = String::new();
+        assert!(form.validate().is_ok());
+    }
+
+    #[test]
+    fn form_state_validate_complete_form_ok() {
+        let mut form = TaskFormState::new_create();
+        form.description = "测试任务".to_owned();
+        form.context = "上下文信息".to_owned();
+        form.priority = "high".to_owned();
+        form.tags = "bug,urgent".to_owned();
+        form.eta = "2025-12-31".to_owned();
+        assert!(form.validate().is_ok());
+    }
+
+    #[test]
+    fn form_state_focused_value_mut_and_get() {
+        let mut form = TaskFormState::new_create();
+        // 默认聚焦 Description
+        assert_eq!(form.focused_value(), "");
+
+        // 通过 focused_value_mut 写入
+        form.focused_value_mut().push_str("hello");
+        assert_eq!(form.focused_value(), "hello");
+        assert_eq!(form.description, "hello");
+
+        // 切换到 Context
+        form.focused_field = FormField::Context;
+        assert_eq!(form.focused_value(), "");
+        form.focused_value_mut().push_str("ctx");
+        assert_eq!(form.context, "ctx");
+
+        // 切换到 Priority
+        form.focused_field = FormField::Priority;
+        form.focused_value_mut().push_str("high");
+        assert_eq!(form.priority, "high");
+
+        // 切换到 Tags
+        form.focused_field = FormField::Tags;
+        form.focused_value_mut().push_str("v1,bug");
+        assert_eq!(form.tags, "v1,bug");
+
+        // 切换到 Eta
+        form.focused_field = FormField::Eta;
+        form.focused_value_mut().push_str("2h");
+        assert_eq!(form.eta, "2h");
+    }
+
+    // ── InputMode 测试 ────────────────────────────────────────────────────
+
+    #[test]
+    fn input_mode_variants_distinct() {
+        // 确保所有变体互不相等
+        let modes = [
+            InputMode::Normal,
+            InputMode::AddingItem,
+            InputMode::EditingItemName,
+            InputMode::EditingItemDesc,
+            InputMode::AddingNote,
+            InputMode::AddingResourceName,
+            InputMode::AddingResourceUrl,
+        ];
+        for (i, a) in modes.iter().enumerate() {
+            for (j, b) in modes.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b, "InputMode variants at {i} and {j} should differ");
+                }
+            }
+        }
+    }
+
+    // ── View 测试 ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn view_variants_distinct() {
+        let views = [View::TaskList, View::TaskDetail, View::TaskForm, View::Help];
+        for (i, a) in views.iter().enumerate() {
+            for (j, b) in views.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b, "View variants at {i} and {j} should differ");
+                }
+            }
+        }
+    }
+
+    // ── App 基础状态测试 ──────────────────────────────────────────────────
+
+    #[test]
+    fn app_new_defaults() {
+        let app = App::new(None);
+        assert_eq!(app.view(), &View::TaskList);
+        assert!(!app.should_quit());
+        assert!(app.tasks().is_empty());
+        assert_eq!(app.selected_index(), 0);
+        assert!(app.message().is_none());
+        assert!(app.error_message().is_none());
+        assert!(app.current_task().is_none());
+        assert_eq!(app.sort_mode(), SortMode::Created);
+        assert!(app.search_query().is_none());
+        assert!(!app.search_mode());
+        assert!(!app.confirm_delete());
+        assert_eq!(app.scroll_offset(), 0);
+        assert_eq!(app.selected_item_index(), 0);
+        assert!(app.form_state().is_none());
+    }
+
+    #[test]
+    fn app_filtered_and_sorted_tasks_empty() {
+        let app = App::new(None);
+        let result = app.filtered_and_sorted_tasks();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn app_set_view() {
+        let mut app = App::new(None);
+        assert_eq!(app.view(), &View::TaskList);
+        app.set_view(View::Help);
+        assert_eq!(app.view(), &View::Help);
+        app.set_view(View::TaskDetail);
+        assert_eq!(app.view(), &View::TaskDetail);
+    }
+}

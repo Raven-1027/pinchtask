@@ -258,3 +258,226 @@ pub fn checkbox_pending_selected() -> Span<'static> {
         Style::default().fg(Color::Indexed(248)).bg(Color::Indexed(236)),
     )
 }
+
+// ── 单元测试 ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── priority_color 测试 ─────────────────────────────────────────────
+
+    #[test]
+    fn priority_color_known() {
+        assert_eq!(priority_color("high"), Color::Red);
+        assert_eq!(priority_color("medium"), Color::Yellow);
+        assert_eq!(priority_color("low"), Color::Green);
+    }
+
+    #[test]
+    fn priority_color_unknown_returns_muted() {
+        assert_eq!(priority_color(""), MUTED);
+        assert_eq!(priority_color("unknown"), MUTED);
+        assert_eq!(priority_color("High"), MUTED); // 大小写敏感
+    }
+
+    // ── priority_icon 测试 ─────────────────────────────────────────────
+
+    #[test]
+    fn priority_icon_known() {
+        assert_eq!(priority_icon("high"), ICON_PRIORITY_HIGH);
+        assert_eq!(priority_icon("medium"), ICON_PRIORITY_MEDIUM);
+        assert_eq!(priority_icon("low"), ICON_PRIORITY_LOW);
+    }
+
+    #[test]
+    fn priority_icon_unknown_returns_space() {
+        assert_eq!(priority_icon(""), " ");
+        assert_eq!(priority_icon("urgent"), " ");
+    }
+
+    // ── priority_span 测试 ─────────────────────────────────────────────
+
+    #[test]
+    fn priority_span_contains_icon_and_text() {
+        let span = priority_span("high", 10);
+        assert!(span.content.contains(ICON_PRIORITY_HIGH));
+        assert!(span.content.contains("high"));
+    }
+
+    #[test]
+    fn priority_span_empty_shows_dash() {
+        let span = priority_span("", 10);
+        assert!(span.content.contains('-'));
+    }
+
+    #[test]
+    fn priority_span_dash_shows_dash() {
+        let span = priority_span("-", 10);
+        assert!(span.content.contains('-'));
+    }
+
+    #[test]
+    fn priority_span_has_correct_color() {
+        let span = priority_span("high", 10);
+        assert_eq!(span.style.fg, Some(Color::Red));
+
+        let span = priority_span("medium", 10);
+        assert_eq!(span.style.fg, Some(Color::Yellow));
+
+        let span = priority_span("low", 10);
+        assert_eq!(span.style.fg, Some(Color::Green));
+    }
+
+    // ── progress_bar_plain 测试 ─────────────────────────────────────────
+
+    #[test]
+    fn progress_bar_plain_zero_percent() {
+        let bar = progress_bar_plain(0, 12);
+        assert!(bar.starts_with('['));
+        assert!(bar.ends_with(']'));
+        assert!(!bar.contains(BAR_FILLED));
+    }
+
+    #[test]
+    fn progress_bar_plain_full_percent() {
+        let bar = progress_bar_plain(100, 12);
+        assert!(bar.starts_with('['));
+        assert!(bar.ends_with(']'));
+        assert!(!bar.contains(BAR_EMPTY));
+    }
+
+    #[test]
+    fn progress_bar_plain_fifty_percent() {
+        let bar = progress_bar_plain(50, 12);
+        assert!(bar.starts_with('['));
+        assert!(bar.ends_with(']'));
+        // 中间应混合填充和空白
+        assert!(bar.contains(BAR_FILLED));
+        assert!(bar.contains(BAR_EMPTY));
+    }
+
+    #[test]
+    fn progress_bar_plain_length() {
+        let bar = progress_bar_plain(50, 12);
+        assert_eq!(bar.len(), 12);
+    }
+
+    #[test]
+    fn progress_bar_plain_too_narrow() {
+        let bar = progress_bar_plain(50, 1);
+        assert!(bar.is_empty());
+    }
+
+    #[test]
+    fn progress_bar_plain_minimum_width() {
+        let bar = progress_bar_plain(50, 2);
+        assert_eq!(bar, "[]");
+    }
+
+    // ── progress_bar_spans 测试 ─────────────────────────────────────────
+
+    #[test]
+    fn progress_bar_spans_full_width() {
+        let spans = progress_bar_spans(75, 20);
+        // 应返回 4 个 span: [ filled empty ]
+        assert_eq!(spans.len(), 4);
+        assert_eq!(spans[0].content, "[");
+        assert_eq!(spans[3].content, "]");
+    }
+
+    #[test]
+    fn progress_bar_spans_narrow() {
+        let spans = progress_bar_spans(50, 3);
+        // 宽度 < 4 时只返回百分比文本
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].content.contains("50"));
+    }
+
+    #[test]
+    fn progress_bar_spans_zero() {
+        let spans = progress_bar_spans(0, 12);
+        assert_eq!(spans.len(), 4);
+        // 内部全为空白字符
+        assert!(!spans[1].content.contains(BAR_FILLED));
+    }
+
+    #[test]
+    fn progress_bar_spans_color_by_percent() {
+        // 0% → Red
+        let spans = progress_bar_spans(0, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Red));
+
+        // 50% → Yellow
+        let spans = progress_bar_spans(50, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Yellow));
+
+        // 75% → Cyan
+        let spans = progress_bar_spans(75, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Cyan));
+
+        // 100% → Green
+        let spans = progress_bar_spans(100, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Green));
+    }
+
+    // ── separator 测试 ──────────────────────────────────────────────────
+
+    #[test]
+    fn separator_length() {
+        let span = separator(20);
+        assert_eq!(span.content.len(), 20);
+    }
+
+    #[test]
+    fn separator_minimum_length() {
+        // width.max(1) 确保至少 1 个字符
+        let span = separator(0);
+        assert_eq!(span.content.len(), 1);
+    }
+
+    #[test]
+    fn separator_content_is_dashes() {
+        let span = separator(5);
+        assert_eq!(span.content, "─────");
+    }
+
+    #[test]
+    fn separator_has_color() {
+        let span = separator(10);
+        assert!(span.style.fg.is_some());
+    }
+
+    // ── bar_color 内部逻辑（通过公开函数间接测试） ────────────────────
+
+    #[test]
+    fn progress_bar_spans_red_for_low() {
+        let spans = progress_bar_spans(10, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn progress_bar_spans_yellow_for_medium() {
+        let spans = progress_bar_spans(30, 12);
+        assert_eq!(spans[1].style.fg, Some(Color::Yellow));
+    }
+
+    // ── 常量一致性测试 ─────────────────────────────────────────────────
+
+    #[test]
+    fn icon_constants_non_empty() {
+        assert!(!ICON_DONE.is_empty());
+        assert!(!ICON_PENDING.is_empty());
+        assert!(!ICON_SELECTED.is_empty());
+        assert!(!ICON_BULLET.is_empty());
+        assert!(!ICON_WARN.is_empty());
+        assert!(!ICON_ERROR.is_empty());
+        assert!(!ICON_INFO.is_empty());
+    }
+
+    #[test]
+    fn min_size_constants_reasonable() {
+        assert!(MIN_WIDTH >= 40);
+        assert!(MIN_HEIGHT >= 10);
+    }
+}

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-**pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 CLI 本地操作和 MCP 服务器两种使用模式，共享同一套核心业务逻辑与数据存储。
+**pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 **CLI 本地操作**、**MCP 服务器** 和 **交互式 TUI** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
 - **语言**: Rust (Edition 2021)
 - **版本**: 0.1.0
@@ -24,6 +24,8 @@
 | tracing            | 0.1.x    | 日志框架                                   |
 | rmcp               | 1.3.0    | MCP 协议参考（未直接使用，自行实现协议层） |
 | sqlx               | 0.8      | SQLite 异步数据库驱动                      |
+| ratatui            | 0.29     | TUI 框架（终端 UI 渲染）                    |
+| crossterm          | 0.28     | 终端控制（raw mode、事件、光标）            |
 
 ## 项目结构
 
@@ -48,6 +50,15 @@ pinchtask/
 │   │   └── mod.rs           # 换行分隔 JSON + Content-Length 双格式支持
 │   ├── tools/               # MCP 工具适配层
 │   │   └── task.rs          # 参数解析 → core 调用 → 结果封装
+│   ├── tui/                 # 交互式终端界面
+│   │   ├── mod.rs           # TUI 入口（终端初始化、主循环）
+│   │   ├── app.rs           # 应用状态管理、事件处理
+│   │   ├── event.rs         # 事件定义与异步事件总线
+│   │   └── ui/              # 渲染模块
+│   │       ├── mod.rs       #   主渲染入口
+│   │       ├── task_detail.rs # 任务详情渲染
+│   │       ├── task_list.rs   # 任务列表渲染
+│   │       └── theme.rs       # 视觉主题（配色、图标、进度条）
 │   └── cli/                 # CLI 命令处理
 │       ├── mod.rs           # 顶层参数解析与子命令分发
 │       ├── task.rs          # new / ls / show / edit / rm
@@ -99,7 +110,7 @@ pinchtask/
 └──────────────────────────────────────────────┘
 ```
 
-**核心设计原则**: 所有业务逻辑集中在 `core/` 层，CLI 和 MCP 工具分别作为适配层调用 core 函数，保证行为一致性。
+**核心设计原则**: 所有业务逻辑集中在 `core/` 层，CLI、TUI 和 MCP 工具分别作为适配层调用 core 函数，保证行为一致性。
 
 ## 核心功能
 
@@ -127,7 +138,7 @@ pinchtask/
 
 ### CLI 命令
 
-`new`, `ls`, `show`, `edit`, `rm`, `add`, `check`, `mv`, `summary`, `note`, `tag`, `link`, `serve`, `completion`
+`new`, `ls`, `show`, `edit`, `rm`, `add`, `check`, `mv`, `summary`, `note`, `tag`, `link`, `tui`, `serve`, `completion`
 
 ### 数据模型
 
@@ -161,7 +172,9 @@ Task {
 - 核心业务逻辑层解耦
 - 17 个 MCP 工具全部注册
 - 存储层从 JSON 文件迁移到 SQLite + sqlx（异步）
+- 完整的交互式 TUI 界面（ratatui + crossterm），支持任务列表、详情、创建/编辑表单
 - 75 个测试全部通过（66 单元测试 + 9 集成测试）
+- TUI 模块包含 55+ 个单元测试（FormField、SortMode、TaskFormState、主题函数）
 - 双格式 stdio 传输（换行分隔 JSON + Content-Length 头）
 - 短 ID 前缀匹配
 - JSON 输出模式（`--json`）
