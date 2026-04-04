@@ -28,6 +28,187 @@ pub enum InputMode {
     EditingItemDesc,
 }
 
+// ── 表单字段 ─────────────────────────────────────────────────────────────────
+
+/// 任务表单中可聚焦的字段。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FormField {
+    /// 任务描述（必填）
+    Description,
+    /// 共享上下文
+    Context,
+    /// 优先级 (high / medium / low / 空)
+    Priority,
+    /// 标签（逗号分隔）
+    Tags,
+    /// 预计完成时间
+    Eta,
+}
+
+impl FormField {
+    /// 所有字段按 Tab 顺序排列。
+    const ORDER: [FormField; 5] = [
+        FormField::Description,
+        FormField::Context,
+        FormField::Priority,
+        FormField::Tags,
+        FormField::Eta,
+    ];
+
+    /// 返回下一个字段（循环）。
+    pub fn next(self) -> Self {
+        let idx = self.index();
+        Self::ORDER[(idx + 1) % Self::ORDER.len()]
+    }
+
+    /// 返回上一个字段（循环）。
+    pub fn prev(self) -> Self {
+        let idx = self.index();
+        if idx == 0 {
+            Self::ORDER[Self::ORDER.len() - 1]
+        } else {
+            Self::ORDER[idx - 1]
+        }
+    }
+
+    /// 字段在 ORDER 中的索引。
+    fn index(self) -> usize {
+        Self::ORDER.iter().position(|&f| f == self).unwrap()
+    }
+
+    /// 返回字段的中文标签。
+    pub fn label(self) -> &'static str {
+        match self {
+            FormField::Description => "描述",
+            FormField::Context => "上下文",
+            FormField::Priority => "优先级",
+            FormField::Tags => "标签",
+            FormField::Eta => "预计完成",
+        }
+    }
+
+    /// 返回字段的占位提示。
+    pub fn placeholder(self) -> &'static str {
+        match self {
+            FormField::Description => "输入任务描述...",
+            FormField::Context => "输入共享上下文（可选）...",
+            FormField::Priority => "high / medium / low（留空表示无优先级）",
+            FormField::Tags => "逗号分隔，如: 重要, v2",
+            FormField::Eta => "如: 2h, P3D, 2025-12-31",
+        }
+    }
+}
+
+// ── 表单模式 ─────────────────────────────────────────────────────────────────
+
+/// 表单操作模式。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FormMode {
+    /// 新建任务
+    Create,
+    /// 编辑已有任务
+    Edit,
+}
+
+/// 任务表单状态。
+#[derive(Debug, Clone)]
+pub struct TaskFormState {
+    /// 操作模式（新建 / 编辑）
+    pub mode: FormMode,
+    /// 编辑模式下的任务 ID
+    pub editing_task_id: Option<String>,
+    /// 描述字段内容
+    pub description: String,
+    /// 上下文字段内容
+    pub context: String,
+    /// 优先级字段内容
+    pub priority: String,
+    /// 标签字段内容（逗号分隔原始输入）
+    pub tags: String,
+    /// 预计完成时间字段内容
+    pub eta: String,
+    /// 当前聚焦字段
+    pub focused_field: FormField,
+    /// 表单校验错误
+    pub error: Option<String>,
+}
+
+impl TaskFormState {
+    /// 创建用于新建任务的空表单。
+    pub fn new_create() -> Self {
+        Self {
+            mode: FormMode::Create,
+            editing_task_id: None,
+            description: String::new(),
+            context: String::new(),
+            priority: String::new(),
+            tags: String::new(),
+            eta: String::new(),
+            focused_field: FormField::Description,
+            error: None,
+        }
+    }
+
+    /// 创建用于编辑已有任务的表单，预填充现有数据。
+    pub fn new_edit(task: &Task) -> Self {
+        let meta = task.metadata.as_ref();
+        Self {
+            mode: FormMode::Edit,
+            editing_task_id: Some(task.id.clone()),
+            description: task.task_description.clone(),
+            context: task.context_for_all_tasks.clone().unwrap_or_default(),
+            priority: meta
+                .and_then(|m| m.priority.clone())
+                .unwrap_or_default(),
+            tags: meta
+                .and_then(|m| m.tags.clone())
+                .map(|t| t.join(", "))
+                .unwrap_or_default(),
+            eta: meta
+                .and_then(|m| m.estimated_completion_time.clone())
+                .unwrap_or_default(),
+            focused_field: FormField::Description,
+            error: None,
+        }
+    }
+
+    /// 获取当前聚焦字段的可变引用。
+    pub fn focused_value_mut(&mut self) -> &mut String {
+        match self.focused_field {
+            FormField::Description => &mut self.description,
+            FormField::Context => &mut self.context,
+            FormField::Priority => &mut self.priority,
+            FormField::Tags => &mut self.tags,
+            FormField::Eta => &mut self.eta,
+        }
+    }
+
+    /// 获取当前聚焦字段的不可变引用。
+    pub fn focused_value(&self) -> &str {
+        match self.focused_field {
+            FormField::Description => &self.description,
+            FormField::Context => &self.context,
+            FormField::Priority => &self.priority,
+            FormField::Tags => &self.tags,
+            FormField::Eta => &self.eta,
+        }
+    }
+
+    /// 校验表单数据，返回错误信息。
+    pub fn validate(&self) -> Result<(), String> {
+        if self.description.trim().is_empty() {
+            return Err("任务描述不能为空".to_owned());
+        }
+        if !self.priority.is_empty() {
+            let p = self.priority.trim().to_lowercase();
+            if !matches!(p.as_str(), "high" | "medium" | "low") {
+                return Err("优先级必须是 high / medium / low".to_owned());
+            }
+        }
+        Ok(())
+    }
+}
+
 // ── 视图枚举 ───────────────────────────────────────────────────────────────
 
 /// TUI 当前激活的视图。
@@ -122,6 +303,10 @@ pub struct App {
     /// 行内输入缓冲区
     input_buffer: String,
 
+    // ── 任务表单状态 ──────────────────────────────────────────────────
+    /// 当前表单状态（进入 TaskForm 视图时创建）
+    form_state: Option<TaskFormState>,
+
     // ── 生命周期与消息 ──────────────────────────────────────────────────
     /// 退出标志
     should_quit: bool,
@@ -154,6 +339,7 @@ impl App {
             selected_item_index: 0,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
+            form_state: None,
             should_quit: false,
             message: None,
             error_message: None,
@@ -236,6 +422,11 @@ impl App {
     /// 获取输入缓冲区内容。
     pub fn input_buffer(&self) -> &str {
         &self.input_buffer
+    }
+
+    /// 获取表单状态引用。
+    pub fn form_state(&self) -> Option<&TaskFormState> {
+        self.form_state.as_ref()
     }
 
     // ── 事件发送端 ────────────────────────────────────────────────────────
@@ -477,6 +668,11 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => {
+                // TaskForm 视图中 q 键作为普通输入
+                if self.view == View::TaskForm {
+                    self.handle_task_form_key(key);
+                    return Ok(());
+                }
                 if self.view == View::Help {
                     self.view = self.previous_view.clone();
                 } else if self.confirm_delete {
@@ -486,17 +682,27 @@ impl App {
                 }
             }
             KeyCode::Char('?') => {
+                if self.view == View::TaskForm {
+                    // TaskForm 视图中 ? 键作为普通输入
+                    self.handle_task_form_key(key);
+                    return Ok(());
+                }
                 if !self.confirm_delete {
                     self.show_help();
                 }
             }
             KeyCode::Esc => {
+                // TaskForm 视图中 Esc 由表单处理器处理
+                if self.view == View::TaskForm {
+                    self.handle_task_form_key(key);
+                    return Ok(());
+                }
                 if self.confirm_delete {
                     self.confirm_delete = false;
                 } else {
                     match self.view {
                         View::Help => self.view = self.previous_view.clone(),
-                        View::TaskDetail | View::TaskForm => self.view = View::TaskList,
+                        View::TaskDetail => self.view = View::TaskList,
                         _ => {}
                     }
                 }
@@ -514,6 +720,9 @@ impl App {
                     InputMode::Normal => self.handle_task_detail_key(key)?,
                     _ => self.handle_input_key(key),
                 }
+            }
+            _ if self.view == View::TaskForm => {
+                self.handle_task_form_key(key);
             }
             _ => {}
         }
@@ -605,6 +814,7 @@ impl App {
             }
             // 新建任务
             KeyCode::Char('n') => {
+                self.form_state = Some(TaskFormState::new_create());
                 self.view = View::TaskForm;
             }
             // 删除任务（首次按下显示确认）
@@ -907,6 +1117,13 @@ impl App {
                 self.input_buffer.clear();
                 self.message = Some("输入条目名称，Enter 确认，Esc 取消".to_owned());
             }
+            // E 键（Shift+e）打开任务编辑表单
+            KeyCode::Char('E') => {
+                if let Some(task) = &self.current_task {
+                    self.form_state = Some(TaskFormState::new_edit(task));
+                    self.view = View::TaskForm;
+                }
+            }
             // e 键编辑当前条目名称
             KeyCode::Char('e') => {
                 if let Some(task) = &self.current_task {
@@ -988,6 +1205,251 @@ impl App {
         }
     }
 
+    // ── 任务表单键盘处理 ────────────────────────────────────────────────
+
+    /// 任务表单视图的键盘处理。
+    ///
+    /// Tab/Backtab 切换字段，Enter 提交，Esc 取消，其他按键编辑当前字段。
+    fn handle_task_form_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        // 表单状态必须存在
+        let Some(form) = self.form_state.as_mut() else {
+            return;
+        };
+
+        match key.code {
+            // Esc 取消表单，返回上一个视图
+            KeyCode::Esc => {
+                self.form_state = None;
+                // 返回到合适的视图
+                self.view = if self.current_task.is_some() {
+                    View::TaskDetail
+                } else {
+                    View::TaskList
+                };
+                self.message = Some("已取消".to_owned());
+            }
+            // Tab 切换到下一个字段
+            KeyCode::Tab => {
+                form.focused_field = form.focused_field.next();
+                form.error = None;
+            }
+            // BackTab (Shift+Tab) 切换到上一个字段
+            KeyCode::BackTab => {
+                form.focused_field = form.focused_field.prev();
+                form.error = None;
+            }
+            // Enter 提交表单
+            KeyCode::Enter => {
+                // 校验
+                if let Err(e) = form.validate() {
+                    form.error = Some(e);
+                    return;
+                }
+
+                // 提取表单数据
+                let description = form.description.trim().to_owned();
+                let context = form.context.trim().to_owned();
+                let priority = form.priority.trim().to_lowercase();
+                let tags_str = form.tags.trim().to_owned();
+                let eta = form.eta.trim().to_owned();
+                let mode = form.mode.clone();
+                let editing_task_id = form.editing_task_id.clone();
+
+                // 清除表单状态
+                self.form_state = None;
+
+                match mode {
+                    FormMode::Create => {
+                        self.spawn_create_task(
+                            description,
+                            if context.is_empty() { None } else { Some(context) },
+                            if priority.is_empty() { None } else { Some(priority) },
+                            if tags_str.is_empty() { None } else { Some(tags_str) },
+                            if eta.is_empty() { None } else { Some(eta) },
+                        );
+                    }
+                    FormMode::Edit => {
+                        if let Some(task_id) = editing_task_id {
+                            self.spawn_update_task(
+                                task_id,
+                                description,
+                                context,
+                                priority,
+                                tags_str,
+                                eta,
+                            );
+                        }
+                    }
+                }
+            }
+            // Backspace 删除末尾字符
+            KeyCode::Backspace => {
+                form.focused_value_mut().pop();
+                form.error = None;
+            }
+            // 普通字符输入
+            KeyCode::Char(c) => {
+                form.focused_value_mut().push(c);
+                form.error = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// 异步创建任务（通过 spawn + Action 回传）。
+    fn spawn_create_task(
+        &mut self,
+        description: String,
+        context: Option<String>,
+        priority: Option<String>,
+        tags_str: Option<String>,
+        eta: Option<String>,
+    ) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            self.message = Some("正在创建任务...".to_owned());
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+
+                // 构建元数据
+                let metadata = if priority.is_some() || tags_str.is_some() || eta.is_some() {
+                    Some(crate::models::task::TaskMetadata {
+                        tags: tags_str.map(|s| {
+                            s.split(',')
+                                .map(|t| t.trim().to_owned())
+                                .filter(|t| !t.is_empty())
+                                .collect()
+                        }),
+                        priority,
+                        estimated_completion_time: eta,
+                    })
+                } else {
+                    None
+                };
+
+                match crate::core::initialize_task(
+                    &store,
+                    &description,
+                    context.as_deref(),
+                    vec![],
+                    vec![],
+                    vec![],
+                    metadata,
+                )
+                .await
+                {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("创建任务失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步更新任务（描述 + 上下文 + 元数据）（通过 spawn + Action 回传）。
+    fn spawn_update_task(
+        &mut self,
+        task_id: String,
+        description: String,
+        context: String,
+        priority: String,
+        tags_str: String,
+        eta: String,
+    ) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            self.message = Some("正在更新任务...".to_owned());
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+
+                // 1. 更新描述
+                match crate::core::update_task_description(&store, &task_id, &description).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("更新描述失败: {e}"),
+                        )));
+                        return;
+                    }
+                }
+
+                // 2. 更新上下文
+                if let Err(e) = crate::core::update_context(&store, &task_id, &context).await {
+                    let _ = tx.send(AppEvent::Action(Action::Error(
+                        format!("更新上下文失败: {e}"),
+                    )));
+                    return;
+                }
+
+                // 3. 更新元数据
+                let metadata = crate::models::task::TaskMetadata {
+                    tags: if tags_str.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            tags_str
+                                .split(',')
+                                .map(|t| t.trim().to_owned())
+                                .filter(|t| !t.is_empty())
+                                .collect(),
+                        )
+                    },
+                    priority: if priority.is_empty() {
+                        None
+                    } else {
+                        Some(priority)
+                    },
+                    estimated_completion_time: if eta.is_empty() {
+                        None
+                    } else {
+                        Some(eta)
+                    },
+                };
+                if let Err(e) = crate::core::update_metadata(&store, &task_id, metadata).await {
+                    let _ = tx.send(AppEvent::Action(Action::Error(
+                        format!("更新元数据失败: {e}"),
+                    )));
+                    return;
+                }
+
+                // 4. 重新加载任务并回传
+                match store.get_task(&task_id).await {
+                    Ok(task) => {
+                        let _ = tx.send(AppEvent::Action(Action::TaskUpdated(task)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("加载更新后的任务失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
     /// 异步操作结果处理。
     fn handle_action(&mut self, action: Action) -> anyhow::Result<()> {
         match action {
@@ -1028,6 +1490,25 @@ impl App {
             Action::ItemReordered(task) => {
                 self.current_task = Some(task);
                 self.message = Some("条目已重排".to_owned());
+            }
+            Action::TaskCreated(task) => {
+                self.message = Some("任务已创建".to_owned());
+                self.error_message = None;
+                // 刷新任务列表
+                self.spawn_load_tasks();
+                // 切换到详情视图展示新建的任务
+                self.current_task = Some(task);
+                self.view = View::TaskDetail;
+            }
+            Action::TaskUpdated(task) => {
+                // 更新列表缓存中的对应任务
+                if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task.id) {
+                    *t = task.clone();
+                }
+                self.current_task = Some(task);
+                self.view = View::TaskDetail;
+                self.message = Some("任务已更新".to_owned());
+                self.error_message = None;
             }
             Action::Error(err) => {
                 self.error_message = Some(err);

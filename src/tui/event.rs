@@ -39,6 +39,10 @@ pub enum Action {
     ItemReordered(Task),
     /// 任务已删除（携带被删除任务的 ID）
     TaskDeleted(String),
+    /// 任务已创建（携带新任务）
+    TaskCreated(Task),
+    /// 任务已更新（携带更新后的任务）
+    TaskUpdated(Task),
     /// 操作出错
     Error(String),
 }

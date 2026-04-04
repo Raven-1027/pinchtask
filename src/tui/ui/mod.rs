@@ -9,7 +9,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::app::{App, InputMode, View};
+use super::app::{App, FormField, FormMode, InputMode, View};
 
 pub mod task_detail;
 pub mod task_list;
@@ -143,7 +143,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 if app.input_mode() != &InputMode::Normal {
                     " Enter 确认  Esc 取消  Backspace 删除"
                 } else {
-                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  d 删除  Ctrl+J/K 移动顺序  ←/Esc 返回"
+                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除  Ctrl+J/K 移动顺序  ←/Esc 返回"
                 }
             }
             View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
@@ -393,23 +393,113 @@ fn draw_input_overlay(f: &mut Frame, area: Rect, app: &App) {
 
 // ── 任务表单视图 ───────────────────────────────────────────────────────────
 
-fn draw_task_form(f: &mut Frame, area: Rect, _app: &App) {
-    let content = vec![
-        Line::from(""),
-        Line::styled(
-            "  [任务表单 — 待实现]",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ),
-        Line::from(""),
-        Line::styled(
-            "  Tab 切换字段  Enter 提交  Esc 取消",
-            Style::default().fg(Color::DarkGray),
-        ),
+fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
+    let Some(form) = app.form_state() else {
+        let content = vec![
+            Line::from(""),
+            Line::styled(
+                "  表单状态异常",
+                Style::default().fg(Color::Red),
+            ),
+        ];
+        let paragraph = Paragraph::new(content);
+        f.render_widget(paragraph, area);
+        return;
+    };
+
+    let is_edit = form.mode != FormMode::Create;
+    let title = if is_edit {
+        " ✏ 编辑任务 "
+    } else {
+        " ✚ 新建任务 "
+    };
+
+    let total_width = area.width as usize;
+    let label_width = 10; // "描述: " 等
+    let field_width = total_width.saturating_sub(label_width).saturating_sub(6).max(20);
+
+    let fields = [
+        (FormField::Description, &form.description, form.focused_field == FormField::Description),
+        (FormField::Context, &form.context, form.focused_field == FormField::Context),
+        (FormField::Priority, &form.priority, form.focused_field == FormField::Priority),
+        (FormField::Tags, &form.tags, form.focused_field == FormField::Tags),
+        (FormField::Eta, &form.eta, form.focused_field == FormField::Eta),
     ];
 
-    let paragraph = Paragraph::new(content);
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(""));
+
+    for (field, value, focused) in &fields {
+        let label = field.label();
+        let placeholder = field.placeholder();
+
+        // 标签样式
+        let label_style = if *focused {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        // 值样式
+        let value_display = if value.is_empty() && !*focused {
+            placeholder.to_owned()
+        } else {
+            let mut display = value.clone();
+            if *focused {
+                display.push('│'); // 光标
+            }
+            display
+        };
+        let value_style = if value.is_empty() && !*focused {
+            Style::default().fg(Color::DarkGray)
+        } else if *focused {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        // 聚焦指示器
+        let marker = if *focused { "▸" } else { " " };
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {marker} "), label_style),
+            Span::styled(format!("{label}: "), label_style),
+            Span::styled(truncate_str(&value_display, field_width), value_style),
+        ]));
+
+        // 空行分隔
+        lines.push(Line::from(""));
+    }
+
+    // 校验错误
+    if let Some(ref err) = form.error {
+        lines.push(Line::from(vec![
+            Span::styled("  ✖ ", Style::default().fg(Color::Red)),
+            Span::styled(err.clone(), Style::default().fg(Color::Red)),
+        ]));
+    }
+
+    // 提示
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  Tab ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::raw("切换字段  "),
+        Span::styled("Enter ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::raw(if is_edit { "保存" } else { "创建" }),
+        Span::raw("  "),
+        Span::styled("Esc ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::raw("取消"),
+    ]));
+
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Span::styled(
+                title,
+                Style::default().fg(Color::Cyan),
+            )),
+    );
     f.render_widget(paragraph, area);
 }
 
@@ -493,6 +583,29 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         Line::from(vec![
             Span::styled("    Esc/←    ", Style::default().fg(Color::Yellow)),
             Span::raw("    返回任务列表"),
+        ]),
+        Line::from(""),
+        Line::styled(
+            "  任务表单视图:",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(vec![
+            Span::styled("    Tab      ", Style::default().fg(Color::Yellow)),
+            Span::raw("    切换到下一个字段"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Shift+Tab", Style::default().fg(Color::Yellow)),
+            Span::raw("切换到上一个字段"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Enter    ", Style::default().fg(Color::Yellow)),
+            Span::raw("    提交表单（新建/保存）"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Esc      ", Style::default().fg(Color::Yellow)),
+            Span::raw("    取消并返回"),
         ]),
         Line::from(""),
         Line::styled(
