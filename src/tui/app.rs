@@ -1510,6 +1510,22 @@ impl App {
                 self.message = Some("任务已更新".to_owned());
                 self.error_message = None;
             }
+            Action::NoteAdded(task) => {
+                self.current_task = Some(task);
+                self.message = Some("笔记已添加".to_owned());
+            }
+            Action::NoteDeleted(task) => {
+                self.current_task = Some(task);
+                self.message = Some("笔记已删除".to_owned());
+            }
+            Action::ResourceAdded(task) => {
+                self.current_task = Some(task);
+                self.message = Some("资源已添加".to_owned());
+            }
+            Action::ResourceDeleted(task) => {
+                self.current_task = Some(task);
+                self.message = Some("资源已删除".to_owned());
+            }
             Action::Error(err) => {
                 self.error_message = Some(err);
             }

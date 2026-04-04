@@ -441,10 +441,10 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
         };
 
         // 值样式
-        let value_display = if value.is_empty() && !*focused {
+        let value_display: String = if value.is_empty() && !*focused {
             placeholder.to_owned()
         } else {
-            let mut display = value.clone();
+            let mut display = (*value).clone();
             if *focused {
                 display.push('│'); // 光标
             }

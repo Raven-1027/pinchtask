@@ -1,5 +1,27 @@
 //! 笔记操作。
 
+/// 删除任务的指定索引处的笔记。
+///
+/// # Errors
+///
+/// 当任务不存在或索引越界时返回 `StoreError`。
+pub async fn delete_note(
+    store: &crate::store::TaskStore,
+    task_id: &str,
+    note_index: usize,
+) -> Result<crate::models::task::Task, crate::store::StoreError> {
+    let mut task = store.get_task(task_id).await?;
+    if note_index >= task.notes.len() {
+        return Err(crate::store::StoreError::NotFound(format!(
+            "笔记索引 {note_index} 越界（共 {} 条）",
+            task.notes.len()
+        )));
+    }
+    task.notes.remove(note_index);
+    store.update_task(&mut task).await?;
+    Ok(task)
+}
+
 /// 向任务添加一条笔记。
 pub async fn add_note(
     store: &crate::store::TaskStore,

@@ -14,8 +14,8 @@ pub use item::{
     add_checklist_item, mark_task_done, mark_task_undone, remove_checklist_item,
     reorder_checklist_item, update_checklist_item,
 };
-pub use note::add_note;
-pub use resource::add_resource;
+pub use note::{add_note, delete_note};
+pub use resource::{add_resource, delete_resource};
 pub use task::{
     clear_task, get_checklist_summary, get_current_task_details, initialize_task,
     list_tasks_summary, update_context, update_metadata, update_task_description,

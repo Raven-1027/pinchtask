@@ -2,6 +2,28 @@
 
 use crate::models::task::Resource;
 
+/// 删除任务的指定索引处的资源引用。
+///
+/// # Errors
+///
+/// 当任务不存在或索引越界时返回 `StoreError`。
+pub async fn delete_resource(
+    store: &crate::store::TaskStore,
+    task_id: &str,
+    resource_index: usize,
+) -> Result<crate::models::task::Task, crate::store::StoreError> {
+    let mut task = store.get_task(task_id).await?;
+    if resource_index >= task.resources.len() {
+        return Err(crate::store::StoreError::NotFound(format!(
+            "资源索引 {resource_index} 越界（共 {} 个）",
+            task.resources.len()
+        )));
+    }
+    task.resources.remove(resource_index);
+    store.update_task(&mut task).await?;
+    Ok(task)
+}
+
 /// 向任务添加一个资源引用。
 pub async fn add_resource(
     store: &crate::store::TaskStore,

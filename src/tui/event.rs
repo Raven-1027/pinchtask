@@ -43,6 +43,14 @@ pub enum Action {
     TaskCreated(Task),
     /// 任务已更新（携带更新后的任务）
     TaskUpdated(Task),
+    /// 笔记已添加（携带更新后的任务）
+    NoteAdded(Task),
+    /// 笔记已删除（携带更新后的任务）
+    NoteDeleted(Task),
+    /// 资源已添加（携带更新后的任务）
+    ResourceAdded(Task),
+    /// 资源已删除（携带更新后的任务）
+    ResourceDeleted(Task),
     /// 操作出错
     Error(String),
 }
