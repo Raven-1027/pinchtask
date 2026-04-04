@@ -29,25 +29,17 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 ## 工具总览
 
-共注册 **17 个工具**：
+共注册 **9 个工具**：
 
 | 工具名 | 类别 | 说明 |
 |--------|------|------|
-| `initialize_task` | 任务 | 创建新任务 |
+| `new_task` | 任务 | 创建新任务 |
 | `update_task` | 任务 | 统一更新任务字段 |
-| `update_task_description` | 任务 | 更新任务描述 |
-| `update_context` | 任务 | 更新共享上下文 |
-| `update_metadata` | 任务 | 更新元数据 |
+| `manage_checklist_item` | 清单 | 统一管理清单条目（add/update/reorder/remove） |
 | `clear_task` | 任务 | 删除任务 |
 | `get_checklist_summary` | 查询 | 获取清单概要 |
 | `list_tasks` | 查询 | 列出所有任务 |
 | `get_current_task_details` | 查询 | 获取当前子任务详情 |
-| `add_checklist_item` | 清单 | 添加清单条目 |
-| `update_checklist_item` | 清单 | 更新清单条目 |
-| `mark_task_done` | 清单 | 标记完成 |
-| `mark_task_undone` | 清单 | 标记未完成 |
-| `reorder_checklist_item` | 清单 | 重排条目顺序 |
-| `remove_checklist_item` | 清单 | 删除条目 |
 | `add_note` | 笔记 | 添加笔记 |
 | `add_resource` | 资源 | 添加资源引用 |
 
@@ -55,7 +47,7 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 ## 工具详细说明
 
-### initialize_task
+### new_task
 
 创建一个新任务。
 
@@ -103,64 +95,40 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 **返回**：更新后的完整 Task 对象。
 
----
 
-### update_task_description
+### manage_checklist_item
 
-更新任务的描述。
+**类别**: 清单
+**说明**: 统一管理清单条目，支持添加、更新、重排、删除四种操作。
 
-**参数**：
+**参数**: (使用 `action` 字段选择操作)
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `task_description` | string | ✅ | 新的描述 |
+| action | 必需参数 | 说明 |
+|--------|----------|------|
+| `add` | `task_id`, `task`, `detailed_description` | 添加新条目 |
+| `update` | `task_id`, `index` | 更新条目字段，支持标记完成 |
+| `reorder` | `task_id`, `from_index`, `to_index` | 移动条目位置 |
+| `remove` | `task_id`, `index` | 删除条目 |
 
-**返回**：更新后的完整 Task 对象。
-
----
-
-### update_context
-
-更新所有子任务的共享上下文。
-
-**参数**：
+**通用参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `action` | string | ✅ | 操作类型：`add` / `update` / `reorder` / `remove` |
 | `task_id` | string | ✅ | 任务 ID |
-| `context_for_all_tasks` | string | ✅ | 新的上下文信息 |
 
-**返回**：更新后的完整 Task 对象。
-
----
-
-### add_checklist_item
-
-向任务清单添加一个新条目。
-
-**参数**：
+**`add` 操作额外参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
 | `task` | string | ✅ | 条目短名称 |
 | `detailed_description` | string | ✅ | 详细描述 |
 | `context_and_plan` | string | ❌ | 上下文与计划 |
 
-**返回**：更新后的完整 Task 对象。
-
----
-
-### update_checklist_item
-
-更新已有的清单条目。仅修改指定字段。
-
-**参数**：
+**`update` 操作额外参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
 | `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
 | `task` | string | ❌ | 新短名称 |
 | `detailed_description` | string | ❌ | 新详细描述 |
@@ -169,65 +137,17 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 > `context_and_plan` 不传与传 `null` 语义不同：不传 = 保持原值，传 `null` = 清空。
 
-**返回**：更新后的完整 Task 对象。
-
----
-
-### mark_task_done
-
-将指定清单条目标记为已完成。
-
-**参数**：
+**`reorder` 操作额外参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
-
-**返回**：更新后的完整 Task 对象。
-
----
-
-### mark_task_undone
-
-将指定清单条目标记为未完成。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
-
-**返回**：更新后的完整 Task 对象。
-
----
-
-### reorder_checklist_item
-
-移动清单条目到新位置。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
 | `from_index` | integer | ✅ | 当前索引（0-based, ≥ 0） |
 | `to_index` | integer | ✅ | 目标索引（0-based, ≥ 0） |
 
-**返回**：更新后的完整 Task 对象。
-
----
-
-### remove_checklist_item
-
-删除指定索引的清单条目。
-
-**参数**：
+**`remove` 操作额外参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
 | `index` | integer | ✅ | 条目索引（0-based, ≥ 0） |
 
 **返回**：更新后的完整 Task 对象。
@@ -264,25 +184,6 @@ pinchtask 实现了 [Model Context Protocol](https://modelcontextprotocol.io/) �
 
 **返回**：更新后的完整 Task 对象。
 
----
-
-### update_metadata
-
-更新任务元数据（标签、优先级、预计完成时间）。
-
-**参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-| `metadata` | object | ✅ | 元数据对象 |
-| `metadata.tags` | string[] | ❌ | 标签列表 |
-| `metadata.priority` | string | ❌ | 优先级 (`"high"` / `"medium"` / `"low"`) |
-| `metadata.estimated_completion_time` | string | ❌ | 预计完成时间 |
-
-**返回**：更新后的完整 Task 对象。
-
----
 
 ### get_checklist_summary
 

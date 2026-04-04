@@ -463,13 +463,6 @@ impl App {
         self.action_tx = Some(tx);
     }
 
-    /// 发送 Action 事件到主循环。
-    fn send_action(&self, action: Action) {
-        if let Some(tx) = &self.action_tx {
-            let _ = tx.send(AppEvent::Action(action));
-        }
-    }
-
     // ── 视图切换 ──────────────────────────────────────────────────────────
 
     /// 切换到指定视图。

@@ -124,13 +124,13 @@ Task
 
 ## 调用链示例
 
-### MCP 模式：标记子任务完成
+### MCP 模式：更新清单条目（标记完成）
 
 ```
 客户端 → StdioTransport → McpServer::handle_request()
        → McpServer::handle_tools_call()
-       → task_tools::mark_task_done_handler(store, args)
-       → core::mark_task_done(store, task_id, index)
+       → task_tools::manage_checklist_item_handler(store, args)
+       → core::update_checklist_item(store, task_id, index, ...)
        → store.get_task(task_id).await
        → task.checklist[index].done = true
        → store.update_task(&mut task).await

@@ -99,13 +99,13 @@ fn void_result(
 #[tool_router]
 impl PinchTaskServer {
     // ------------------------------------------------------------------
-    // 1. initialize_task
+    // 1. new_task
     // ------------------------------------------------------------------
     #[tool(
-        name = "initialize_task",
-        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata.\n\nUsage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints)."
+        name = "new_task",
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints)."
     )]
-    pub async fn initialize_task(
+    pub async fn new_task(
         &self,
         Parameters(params): Parameters<InitializeTaskParams>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -122,7 +122,7 @@ impl PinchTaskServer {
             })
             .collect();
 
-        let resources: Vec<Resource> = params
+        let resources= params
             .resources
             .unwrap_or_default()
             .into_iter()
@@ -131,7 +131,7 @@ impl PinchTaskServer {
                 url: r.url,
                 description: r.description,
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         let metadata: Option<TaskMetadata> = params.metadata.map(|m| TaskMetadata {
             tags: m.tags,
@@ -157,7 +157,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_task",
-        description = "Update multiple task fields at once: description, context, priority, tags, and/or eta. Only specified fields are modified.\n\nUsage: Prefer this over individual field-update tools when modifying multiple fields in one call to reduce round-trips. At least one field must be specified."
+        description = "Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. At least one field must be specified."
     )]
     pub async fn update_task(
         &self,
@@ -228,151 +228,76 @@ impl PinchTaskServer {
         Ok(task_to_result(&task))
     }
 
-    // ------------------------------------------------------------------
-    // 3. update_task_description
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "update_task_description",
-        description = "Update the overall description of an existing task.\n\nUsage: Use when only the task description needs changing. For batch updates including description plus other fields, prefer update_task."
-    )]
-    pub async fn update_task_description(
-        &self,
-        Parameters(params): Parameters<UpdateTaskDescriptionParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::update_task_description(&self.store, &params.task_id, &params.task_description)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
-    }
+
 
     // ------------------------------------------------------------------
-    // 4. update_context
+    // 5. manage_checklist_item
     // ------------------------------------------------------------------
     #[tool(
-        name = "update_context",
-        description = "Update the shared context information for all sub-tasks.\n\nUsage: Call this when new shared information is discovered (e.g., new constraints, design decisions) that all sub-tasks should be aware of."
+        name = "manage_checklist_item",
+        description = "Perform operations on checklist items. Select the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations."
     )]
-    pub async fn update_context(
+    pub async fn manage_checklist_item(
         &self,
-        Parameters(params): Parameters<UpdateContextParams>,
+        Parameters(params): Parameters<ManageChecklistItemParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        core::update_context(&self.store, &params.task_id, &params.context_for_all_tasks)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 5. add_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "add_checklist_item",
-        description = "Add a new item to the task checklist.\n\nUsage: Provide detailed_description to record what needs to be done and context_and_plan to capture the approach. New items are appended to the end of the checklist."
-    )]
-    pub async fn add_checklist_item(
-        &self,
-        Parameters(params): Parameters<AddChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::add_checklist_item(
-            &self.store,
-            &params.task_id,
-            &params.task,
-            &params.detailed_description,
-            params.context_and_plan.as_deref(),
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 6. update_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "update_checklist_item",
-        description = "Update an existing checklist item.\n\nUsage: Only specified fields are modified. Note: omitting context_and_plan keeps the original value, while passing null clears it. Use index (0-based) to identify the item."
-    )]
-    pub async fn update_checklist_item(
-        &self,
-        Parameters(params): Parameters<UpdateChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::update_checklist_item(
-            &self.store,
-            &params.task_id,
-            params.index as usize,
-            params.task.as_deref(),
-            params.detailed_description.as_deref(),
-            params.context_and_plan.as_ref().map(|o| o.as_deref()),
-            params.done,
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 7. mark_task_done
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "mark_task_done",
-        description = "Mark a specific checklist item as completed.\n\nUsage: Call after successfully completing a sub-task. Use index (0-based) to identify the item."
-    )]
-    pub async fn mark_task_done(
-        &self,
-        Parameters(params): Parameters<MarkTaskDoneParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::mark_task_done(&self.store, &params.task_id, params.index as usize)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 8. mark_task_undone
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "mark_task_undone",
-        description = "Mark a specific checklist item as not completed.\n\nUsage: Call to revert a sub-task's completion status, e.g., when a previously done item needs rework. Use index (0-based)."
-    )]
-    pub async fn mark_task_undone(
-        &self,
-        Parameters(params): Parameters<MarkTaskUndoneParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::mark_task_undone(&self.store, &params.task_id, params.index as usize)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 9. reorder_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "reorder_checklist_item",
-        description = "Move a checklist item to a new position.\n\nUsage: Use to prioritize sub-tasks by moving important items to lower indices. Note: after reordering, item indices change—refresh the task data before further index-based operations."
-    )]
-    pub async fn reorder_checklist_item(
-        &self,
-        Parameters(params): Parameters<ReorderChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::reorder_checklist_item(
-            &self.store,
-            &params.task_id,
-            params.from_index as usize,
-            params.to_index as usize,
-        )
-        .await
-        .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
-    // 10. remove_checklist_item
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "remove_checklist_item",
-        description = "Remove a checklist item from the task.\n\nUsage: Use when a sub-task is no longer needed. Warning: after removal, subsequent item indices shift down by 1. Refresh task data before further index-based operations."
-    )]
-    pub async fn remove_checklist_item(
-        &self,
-        Parameters(params): Parameters<RemoveChecklistItemParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        core::remove_checklist_item(&self.store, &params.task_id, params.index as usize)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
+        match params {
+            ManageChecklistItemParams::Add {
+                task_id,
+                task,
+                detailed_description,
+                context_and_plan,
+            } => {
+                core::add_checklist_item(
+                    &self.store,
+                    &task_id,
+                    &task,
+                    &detailed_description,
+                    context_and_plan.as_deref(),
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Update {
+                task_id,
+                index,
+                task,
+                detailed_description,
+                context_and_plan,
+                done,
+            } => {
+                core::update_checklist_item(
+                    &self.store,
+                    &task_id,
+                    index as usize,
+                    task.as_deref(),
+                    detailed_description.as_deref(),
+                    context_and_plan.as_ref().map(|o| o.as_deref()),
+                    done,
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Reorder {
+                task_id,
+                from_index,
+                to_index,
+            } => {
+                core::reorder_checklist_item(
+                    &self.store,
+                    &task_id,
+                    from_index as usize,
+                    to_index as usize,
+                )
+                .await
+                .into_tool_result(|t| task_to_result(&t))
+            }
+            ManageChecklistItemParams::Remove { task_id, index } => {
+                core::remove_checklist_item(&self.store, &task_id, index as usize)
+                    .await
+                    .into_tool_result(|t| task_to_result(&t))
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -380,7 +305,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_note",
-        description = "Add a note to the task.\n\nUsage: Record discoveries, decisions, or context that doesn't fit into checklist items. Notes are append-only and useful for audit trails."
+        description = "Add a note to the task. Usage: Record discoveries, decisions, or context that doesn't fit into checklist items. Notes are append-only and useful for audit trails."
     )]
     pub async fn add_note(
         &self,
@@ -396,7 +321,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_resource",
-        description = "Add a resource reference to the task.\n\nUsage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references. Resources help maintain traceability to external materials."
+        description = "Add a resource reference to the task. Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references. Resources help maintain traceability to external materials."
     )]
     pub async fn add_resource(
         &self,
@@ -414,32 +339,11 @@ impl PinchTaskServer {
     }
 
     // ------------------------------------------------------------------
-    // 13. update_metadata
-    // ------------------------------------------------------------------
-    #[tool(
-        name = "update_metadata",
-        description = "Update the task metadata (tags, priority, estimated completion time).\n\nUsage: Priority accepts 'high', 'medium', or 'low'. Tags is an array of strings for categorization. estimated_completion_time is a free-form string (e.g., '2025-02-01' or '2h')."
-    )]
-    pub async fn update_metadata(
-        &self,
-        Parameters(params): Parameters<UpdateMetadataParams>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let metadata = TaskMetadata {
-            tags: params.metadata.tags,
-            priority: params.metadata.priority,
-            estimated_completion_time: params.metadata.estimated_completion_time,
-        };
-        core::update_metadata(&self.store, &params.task_id, metadata)
-            .await
-            .into_tool_result(|t| task_to_result(&t))
-    }
-
-    // ------------------------------------------------------------------
     // 14. get_checklist_summary
     // ------------------------------------------------------------------
     #[tool(
         name = "get_checklist_summary",
-        description = "Get a summary of the task checklist with completion status.\n\nUsage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names."
+        description = "Get a summary of the task checklist with completion status. Usage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names."
     )]
     pub async fn get_checklist_summary(
         &self,
@@ -456,7 +360,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "clear_task",
-        description = "Delete a task by its ID.\n\nUsage: Irreversible operation. Confirm the task_id before calling. Consider using get_checklist_summary to verify the task is the intended target."
+        description = "Delete a task by its ID. Usage: Irreversible operation. Confirm the task_id before calling. Consider using get_checklist_summary to verify the task is the intended target."
     )]
     pub async fn clear_task(
         &self,
@@ -473,7 +377,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "list_tasks",
-        description = "List all tasks sorted by creation time.\n\nUsage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details."
+        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details."
     )]
     pub async fn list_tasks(
         &self,
@@ -489,7 +393,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "get_current_task_details",
-        description = "Get details of the first uncompleted task (current task) with full context.\n\nUsage: Call to quickly resume work—returns the task context and the first incomplete sub-task's full details (name, description, plan, status). Ideal for session continuity."
+        description = "Get details of the first uncompleted task (current task) with full context. Usage: Call to quickly resume work—returns the task context and the first incomplete sub-task's full details (name, description, plan, status). Ideal for session continuity."
     )]
     pub async fn get_current_task_details(
         &self,

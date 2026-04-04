@@ -53,23 +53,15 @@ async fn test_get_info_returns_correct_server_info() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_all_17_tools_registered() {
+async fn test_all_9_tools_registered() {
     let (server, _dir) = test_server().await;
 
     let expected_tools = [
-        "initialize_task",
+        "new_task",
         "update_task",
-        "update_task_description",
-        "update_context",
-        "add_checklist_item",
-        "update_checklist_item",
-        "mark_task_done",
-        "mark_task_undone",
-        "reorder_checklist_item",
-        "remove_checklist_item",
+        "manage_checklist_item",
         "add_note",
         "add_resource",
-        "update_metadata",
         "get_checklist_summary",
         "clear_task",
         "list_tasks",
@@ -101,9 +93,9 @@ async fn test_tool_schemas_are_valid() {
 
     // 每个 tool 的 inputSchema 应该是一个合法的 JSON Schema 对象
     for name in [
-        "initialize_task",
+        "new_task",
         "update_task",
-        "add_checklist_item",
+        "manage_checklist_item",
         "list_tasks",
     ] {
         let tool = server.get_tool(name).expect("工具应存在");
@@ -113,10 +105,13 @@ async fn test_tool_schemas_are_valid() {
             schema_value.is_object(),
             "工具 '{name}' 的 inputSchema 应为 object"
         );
-        assert!(
-            schema_value.get("type").is_some(),
-            "工具 '{name}' 的 inputSchema 应包含 type 字段"
-        );
+        // manage_checklist_item 使用 tagged enum，schema 为 oneOf 结构，无顶层 type 字段
+        if name != "manage_checklist_item" {
+            assert!(
+                schema_value.get("type").is_some(),
+                "工具 '{name}' 的 inputSchema 应包含 type 字段"
+            );
+        }
     }
 }
 
@@ -129,7 +124,7 @@ async fn test_initialize_task_creates_task() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "集成测试任务".to_owned(),
             context_for_all_tasks: Some("测试上下文信息".to_owned()),
             initial_checklist: None,
@@ -158,7 +153,7 @@ async fn test_initialize_task_with_checklist() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "带检查项的任务".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![
@@ -202,7 +197,7 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 创建任务
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "测试任务".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -218,7 +213,7 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 添加检查项
     let result = server
-        .add_checklist_item(Parameters(AddChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Add {
             task_id: task_id.clone(),
             task: "步骤一".to_owned(),
             detailed_description: "完成第一步操作".to_owned(),
@@ -236,9 +231,13 @@ async fn test_add_checklist_item_and_mark_done() {
 
     // 标记完成
     let result = server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -254,7 +253,7 @@ async fn test_list_tasks_after_creating_two() {
 
     for desc in ["任务A", "任务B"] {
         server
-            .initialize_task(Parameters(InitializeTaskParams {
+            .new_task(Parameters(InitializeTaskParams {
                 task_description: desc.to_owned(),
                 context_for_all_tasks: None,
                 initial_checklist: None,
@@ -283,7 +282,7 @@ async fn test_mark_done_and_get_summary() {
 
     // 创建带两个检查项的任务
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "进度测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![
@@ -314,9 +313,13 @@ async fn test_mark_done_and_get_summary() {
 
     // 标记第一个完成
     server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -345,7 +348,7 @@ async fn test_add_note_and_resource() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "笔记测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -394,7 +397,7 @@ async fn test_update_task_unified() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "原始描述".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -437,7 +440,7 @@ async fn test_update_task_with_no_fields_returns_error() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -472,7 +475,7 @@ async fn test_clear_task_deletes_task() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "待删除任务".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -499,9 +502,13 @@ async fn test_clear_task_deletes_task() {
 
     // 后续操作该任务应返回错误
     let result = server
-        .mark_task_done(Parameters(MarkTaskDoneParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(true),
         }))
         .await
         .unwrap();
@@ -513,7 +520,7 @@ async fn test_reorder_checklist_item() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "排序测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![
@@ -551,7 +558,7 @@ async fn test_reorder_checklist_item() {
 
     // 把 index 0 移到 index 2
     let result = server
-        .reorder_checklist_item(Parameters(ReorderChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Reorder {
             task_id: task_id.clone(),
             from_index: 0,
             to_index: 2,
@@ -572,7 +579,7 @@ async fn test_remove_checklist_item() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "删除测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![
@@ -602,7 +609,7 @@ async fn test_remove_checklist_item() {
     let task_id = task["id"].as_str().unwrap().to_owned();
 
     let result = server
-        .remove_checklist_item(Parameters(RemoveChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Remove {
             task_id: task_id.clone(),
             index: 1,
         }))
@@ -638,7 +645,7 @@ async fn test_get_current_task_details_with_uncompleted() {
 
     // 创建一个有未完成子任务的任务
     server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "当前任务".to_owned(),
             context_for_all_tasks: Some("共享上下文".to_owned()),
             initial_checklist: Some(vec![InitialChecklistItem {
@@ -671,7 +678,7 @@ async fn test_update_metadata() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "元数据测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -686,13 +693,13 @@ async fn test_update_metadata() {
     let task_id = task["id"].as_str().unwrap().to_owned();
 
     let result = server
-        .update_metadata(Parameters(UpdateMetadataParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id,
-            metadata: TaskMetadataInput {
-                tags: Some(vec!["rust".to_owned(), "mcp".to_owned()]),
-                priority: Some("high".to_owned()),
-                estimated_completion_time: Some("2025-12-31".to_owned()),
-            },
+            task_description: None,
+            context_for_all_tasks: None,
+            priority: Some("high".to_owned()),
+            tags: Some("rust,mcp".to_owned()),
+            eta: Some("2025-12-31".to_owned()),
         }))
         .await
         .unwrap();
@@ -713,7 +720,7 @@ async fn test_update_context_and_description() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "原始".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: None,
@@ -729,9 +736,13 @@ async fn test_update_context_and_description() {
 
     // 更新上下文
     let result = server
-        .update_context(Parameters(UpdateContextParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id: task_id.clone(),
-            context_for_all_tasks: "新上下文".to_owned(),
+            task_description: None,
+            context_for_all_tasks: Some("新上下文".to_owned()),
+            priority: None,
+            tags: None,
+            eta: None,
         }))
         .await
         .unwrap();
@@ -741,9 +752,13 @@ async fn test_update_context_and_description() {
 
     // 更新描述
     let result = server
-        .update_task_description(Parameters(UpdateTaskDescriptionParams {
+        .update_task(Parameters(UpdateTaskParams {
             task_id,
-            task_description: "新描述".to_owned(),
+            task_description: Some("新描述".to_owned()),
+            context_for_all_tasks: None,
+            priority: None,
+            tags: None,
+            eta: None,
         }))
         .await
         .unwrap();
@@ -757,7 +772,7 @@ async fn test_mark_undone() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "撤销测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![InitialChecklistItem {
@@ -779,9 +794,13 @@ async fn test_mark_undone() {
     assert_eq!(task["checklist"][0]["done"], true);
 
     let result = server
-        .mark_task_undone(Parameters(MarkTaskUndoneParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
+            task: None,
+            detailed_description: None,
+            context_and_plan: None,
+            done: Some(false),
         }))
         .await
         .unwrap();
@@ -795,7 +814,7 @@ async fn test_update_checklist_item_partial() {
     let (server, _dir) = test_server().await;
 
     let result = server
-        .initialize_task(Parameters(InitializeTaskParams {
+        .new_task(Parameters(InitializeTaskParams {
             task_description: "部分更新测试".to_owned(),
             context_for_all_tasks: None,
             initial_checklist: Some(vec![InitialChecklistItem {
@@ -817,7 +836,7 @@ async fn test_update_checklist_item_partial() {
 
     // 只更新 task 名称
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id: task_id.clone(),
             index: 0,
             task: Some("新名称".to_owned()),
@@ -839,7 +858,7 @@ async fn test_update_checklist_item_partial() {
 
     // 用 null 清空 context_and_plan
     let result = server
-        .update_checklist_item(Parameters(UpdateChecklistItemParams {
+        .manage_checklist_item(Parameters(ManageChecklistItemParams::Update {
             task_id,
             index: 0,
             task: None,
