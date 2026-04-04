@@ -1,8 +1,10 @@
 # pinchtask
 
+Warning: 几乎所有代码都由 GLM-5-Turbo 生成, 本程序按原样提供 不做任何保障.
+
 基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。
 
-支持 **CLI 本地操作** 和 **MCP 服务器** 两种使用模式，共享同一套核心业务逻辑与数据存储。
+支持 **CLI 本地操作**, **TUI** 和 **MCP 服务器** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
 ## 功能特性
 
@@ -22,7 +24,7 @@
 
 ```bash
 # 需要 Rust 1.70+ 和 Cargo
-git clone https://github.com/ravenxrq/pinchtask.git
+git clone https://github.com/Raven-1027/pinchtask.git
 cd pinchtask
 cargo build --release
 # 二进制文件位于 target/release/pinchtask
@@ -31,7 +33,7 @@ cargo build --release
 ### 使用 Cargo 安装
 
 ```bash
-cargo install --git https://github.com/ravenxrq/pinchtask
+cargo install --git https://github.com/Raven-1027/pinchtask
 ```
 
 ## 快速开始
