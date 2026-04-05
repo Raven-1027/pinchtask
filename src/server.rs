@@ -158,7 +158,8 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_task",
-        description = "Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. At least one field must be specified."
+        description = "Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. At least one field must be specified.",
+        input_schema = crate::tools::params::json_schema_for::<UpdateTaskParams>()
     )]
     pub async fn update_task(
         &self,
@@ -326,7 +327,8 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_resource",
-        description = "Add a resource reference to the task (append-only). Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references."
+        description = "Add a resource reference to the task (append-only). Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references.",
+        input_schema = crate::tools::params::json_schema_for::<AddResourceParams>()
     )]
     pub async fn add_resource(
         &self,
@@ -348,7 +350,8 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "get_checklist_summary",
-        description = "Get a summary of the task checklist with completion status. Usage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names."
+        description = "Get a summary of the task checklist with completion status. Usage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names.",
+        input_schema = crate::tools::params::json_schema_for::<GetChecklistSummaryParams>()
     )]
     pub async fn get_checklist_summary(
         &self,

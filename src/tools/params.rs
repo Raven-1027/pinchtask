@@ -285,7 +285,12 @@ pub fn json_schema_for<T: JsonSchema>() -> Arc<serde_json::Map<String, serde_jso
     // 1. 递归内联所有 $ref（安全网，处理 inline_subschemas 未覆盖的边界情况）
     resolve_refs(&mut schema);
 
-    // 2. 清理顶层多余字段
+    // 2. 简化 nullable 类型：将 `type: ["T", "null"]` 转换为 `type: "T"`
+    //    许多 MCP 客户端不支持联合类型语法，更好的兼容性策略是保持 type 为基础类型，
+    //    同时确保字段不在 required 中（schemars 对 Option<T> 已自动处理）。
+    simplify_nullable_types(&mut schema);
+
+    // 3. 清理顶层多余字段
     if let Some(obj) = schema.as_object_mut() {
         obj.remove("$schema");
         obj.remove("$defs");
@@ -375,6 +380,59 @@ fn find_definition(schema: &serde_json::Value, name: &str) -> Option<serde_json:
     None
 }
 
+/// 简化 nullable 类型：将 `type: ["T", "null"]` 转换为 `type: "T"`。
+///
+/// schemars 默认将 `Option<T>` 序列化为联合类型 `["T", "null"]`，
+/// 这是 JSON Schema 2020-12 的合法语法，但许多 MCP 客户端不支持。
+///
+/// 更好的兼容性策略：
+/// - 保持 `type` 为基础类型（如 `"string"` 而非 `["string", "null"]`）
+/// - 字段不在 `required` 数组中（schemars 对 `Option<T>` 已自动处理）
+/// - 移除多余的 `"default": null`（不提供默认值更明确）
+///
+/// 处理模式：
+/// - `"type": ["string", "null"]` → `"type": "string"`
+/// - `"type": ["array", "null"]` → `"type": "array"`
+/// - `"type": ["integer", "null"]` → `"type": "integer"`
+/// - `"type": ["boolean", "null"]` → `"type": "boolean"`
+/// - `"type": ["object", "null"]` → `"type": "object"`
+fn simplify_nullable_types(schema: &mut serde_json::Value) {
+    match schema {
+        serde_json::Value::Object(map) => {
+            // 检查是否有 type 字段是 ["X", "null"] 格式
+            if let Some(serde_json::Value::Array(type_arr)) = map.get("type") {
+                // 过滤掉 "null"，只保留实际类型
+                let non_null_types: Vec<&serde_json::Value> = type_arr
+                    .iter()
+                    .filter(|t| t.as_str() != Some("null"))
+                    .collect();
+
+                if non_null_types.len() == 1 {
+                    // 只有一个非 null 类型，简化为单一类型
+                    map.insert("type".to_string(), (*non_null_types[0]).clone());
+                    // 移除多余的 default: null
+                    if map.get("default").and_then(|v| v.as_str()) == Some("null")
+                        || map.get("default").is_some_and(|v| v.is_null())
+                    {
+                        map.remove("default");
+                    }
+                }
+            }
+
+            // 递归处理所有嵌套值
+            for value in map.values_mut() {
+                simplify_nullable_types(value);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                simplify_nullable_types(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +520,76 @@ mod tests {
         assert_eq!(extract_def_name("#/$defs/MyType"), "MyType");
         assert_eq!(extract_def_name("#/definitions/MyType"), "MyType");
         assert_eq!(extract_def_name("#/$defs/NestedType"), "NestedType");
+    }
+
+    #[test]
+    fn schema_has_no_nullable_type_arrays() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        let schema_str = serde_json::to_string(&schema).unwrap();
+        // 不应出现 ["string", "null"] 等联合类型
+        assert!(
+            !schema_str.contains(r#""type":["string","null"]"#),
+            "should not have nullable string type array: {schema_str}"
+        );
+        assert!(
+            !schema_str.contains(r#""type":["array","null"]"#),
+            "should not have nullable array type array: {schema_str}"
+        );
+        assert!(
+            !schema_str.contains(r#""type":["object","null"]"#),
+            "should not have nullable object type array: {schema_str}"
+        );
+    }
+
+    #[test]
+    fn optional_fields_not_in_required() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        let required = schema
+            .get("required")
+            .and_then(|v| v.as_array())
+            .expect("should have required array");
+
+        // 只有 task_description 是必填的
+        assert_eq!(required.len(), 1);
+        assert_eq!(required[0].as_str(), Some("task_description"));
+
+        // 确认 Option 字段确实不在 required 中
+        let optional_fields = [
+            "context_for_all_tasks",
+            "initial_checklist",
+            "notes",
+            "resources",
+            "metadata",
+        ];
+        for field in &optional_fields {
+            assert!(
+                !required.iter().any(|v| v.as_str() == Some(field)),
+                "{field} should not be in required"
+            );
+        }
+    }
+
+    #[test]
+    fn nullable_simplification_works() {
+        let mut schema = serde_json::json!({
+            "type": ["string", "null"],
+            "default": null,
+            "description": "optional field"
+        });
+        simplify_nullable_types(&mut schema);
+
+        assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("string"));
+        assert!(!schema.as_object().unwrap().contains_key("default"));
+    }
+
+    #[test]
+    fn nullable_simplification_preserves_non_nullable() {
+        let mut schema = serde_json::json!({
+            "type": "string",
+            "description": "required field"
+        });
+        simplify_nullable_types(&mut schema);
+
+        assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("string"));
     }
 }
