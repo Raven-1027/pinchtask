@@ -5,6 +5,49 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-04-06
+
+### Added
+
+- CLI 嵌套子命令结构：`task`、`item`、`note`、`link`、`project` 五组子命令，替代原有的扁平命令
+- 项目管理功能：项目 CRUD、任务关联，CLI 子命令（`project new/ls/show/edit/rm/add-task/rm-task`）
+- `manage_project` MCP 工具（create/get/update/delete/list），MCP 工具总数增至 10 个
+- TUI 左右分栏布局：左栏项目列表（30%），右栏任务列表/详情/表单（70%）
+- TUI 面板边框：未选中白色，选中青色，危险操作红色
+- TUI 优先级枚举选择器：聚焦时 `Space`/`←`/`→` 循环切换 `—`/`low`/`medium`/`high`，不再需要手动输入
+- TUI 作为可选 feature，默认禁用（`cargo run --features tui -- tui`）
+- 数据库迁移脚本：`20260406100000_add_projects.sql`（新增 projects 表）、`20260406110000_refactor_project_relation.sql`（多对多→一对多）
+- `Task` 模型新增 `project_id: Option<String>` 字段
+- `Project` 数据模型
+
+### Changed
+
+- CLI 命令从扁平结构（`new`、`ls`、`show`…）改为嵌套子命令（`task new`、`task ls`、`project ls`…）
+- 任务与项目关系从多对多（`task_projects` 关联表）改为一对多（`tasks.project_id` 外键，`ON DELETE SET NULL`）
+- TUI 从单栏顺序导航（TaskList → TaskDetail → TaskForm）改为左右分栏焦点切换（`→`/`←` 切换面板）
+- TUI 新建任务自动关联当前选中的项目
+- 核心层 API：`add_task_to_project`/`remove_task_from_project` 统一为 `set_task_project(store, task_id, Option<&str>)`
+- 核心层 API：`get_projects_for_task` 改为 `get_project_for_task`（返回 `Option<Project>`）
+- 核心层 API：`get_tasks_for_project` 改为直接查询 `tasks.project_id`
+- `new_task` CLI 参数 `--project` 从 `Vec<String>` 改为 `Option<String>`（单个项目）
+
+### Fixed
+
+- 修复状态栏键位提示被 `message` 完全覆盖的问题：消息作为前缀显示，键位提示始终可见
+- 修复状态栏文字不可见：前景色 `MUTED`(DarkGray) 与背景色 `TITLE_BG`(DarkGray) 同色，改为 White on Black
+- 修复 TUI 面板边框不显示：`Block.inner(area)` 只计算内部区域未渲染 Block 本身，改为先 `render_widget(&block, area)` 再取 `inner(area)`
+- 修复 MCP Schema 中 `Option<T>` 可空类型对客户端不兼容的问题
+- 修复删除确认弹窗无背景色导致与下层内容混在一起：添加 `bg(Color::Black)` 实心背景
+- 修复三个删除确认对话框重复代码：提取 `draw_confirm_dialog` 通用函数
+
+### Removed
+
+- 删除 `task_projects` 关联表（由 `tasks.project_id` 外键替代）
+- 删除 TUI `project_detail.rs`（功能合并到左栏项目列表）
+- 删除独立的 ProjectList/ProjectDetail/ProjectForm 视图（由分栏布局替代）
+
+[0.2.0]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.2.0
+
 ## [0.1.0] - 2026-04-04
 
 ### Added
