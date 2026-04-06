@@ -44,6 +44,9 @@ fn report_error(err: &anyhow::Error) {
             StoreError::NotFound(id) => {
                 eprintln!("错误: 任务不存在: {id}");
             }
+            StoreError::ProjectNotFound(id) => {
+                eprintln!("错误: 项目不存在: {id}");
+            }
             StoreError::Io(io_err) => {
                 eprintln!("错误: 文件操作失败");
                 eprintln!("  详情: {io_err}");
@@ -66,6 +69,7 @@ fn exit_code_from_error(err: &anyhow::Error) -> ExitCode {
     if let Some(store_err) = err.downcast_ref::<StoreError>() {
         match store_err {
             StoreError::NotFound(_) => ExitCode::from(EXIT_ERR_NOT_FOUND),
+            StoreError::ProjectNotFound(_) => ExitCode::from(EXIT_ERR_NOT_FOUND),
             StoreError::Io(_) | StoreError::Database(_) => ExitCode::from(EXIT_ERR_IO),
         }
     } else {

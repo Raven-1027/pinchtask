@@ -9,6 +9,7 @@ use chrono::Utc;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::models::project::Project;
 use crate::models::task::{ChecklistItem, Resource, Task, TaskMetadata};
 
 /// 持久化层自定义错误类型。
@@ -25,10 +26,17 @@ pub enum StoreError {
     /// 指定任务不存在。
     #[error("任务不存在: {0}")]
     NotFound(String),
+
+    /// 指定项目不存在。
+    #[error("项目不存在: {0}")]
+    ProjectNotFound(String),
 }
 
 /// 初始化建表 SQL（从 migrations 目录嵌入）。
 const MIGRATION_SQL: &str = include_str!("../migrations/20250101000000_init.sql");
+
+/// 项目管理功能迁移 SQL。
+const PROJECT_MIGRATION_SQL: &str = include_str!("../migrations/20260406100000_add_projects.sql");
 
 /// 任务 SQLite 持久化存储。
 pub struct TaskStore {
@@ -69,6 +77,11 @@ impl TaskStore {
             .execute(&pool)
             .await?;
 
+        // 执行项目管理迁移
+        sqlx::query(PROJECT_MIGRATION_SQL)
+            .execute(&pool)
+            .await?;
+
         Ok(Self { pool })
     }
 
@@ -80,6 +93,8 @@ impl TaskStore {
     ///
     /// 使用事务同时写入 tasks 表和关联的 checklist_items/notes/resources 表。
     /// 自动生成 UUID v4、ISO 8601 时间戳。
+    ///
+    /// 如果提供了 `project_ids`，任务创建后自动添加到指定项目。
     pub async fn create_task(
         &self,
         task_description: &str,
@@ -88,6 +103,7 @@ impl TaskStore {
         notes: Vec<String>,
         resources: Vec<Resource>,
         metadata: Option<TaskMetadata>,
+        project_ids: Option<&[String]>,
     ) -> Result<Task, StoreError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
@@ -152,6 +168,13 @@ impl TaskStore {
         }
 
         tx.commit().await?;
+
+        // 关联任务到指定项目
+        if let Some(pids) = project_ids {
+            for pid in pids {
+                self.add_task_to_project(&id, pid).await?;
+            }
+        }
 
         Ok(Task {
             id,
@@ -338,6 +361,272 @@ impl TaskStore {
     }
 
     // ------------------------------------------------------------------
+    // 项目管理 API
+    // ------------------------------------------------------------------
+
+    /// 创建新项目并持久化到数据库。
+    ///
+    /// 自动生成 UUID v4、ISO 8601 时间戳。
+    pub async fn create_project(
+        &self,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<Project, StoreError> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO projects (id, name, description, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(description)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(Project {
+            id,
+            name: name.to_owned(),
+            description: description.map(|s| s.to_owned()),
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    /// 根据 ID 获取单个项目。
+    pub async fn get_project(&self, id: &str) -> Result<Project, StoreError> {
+        let row = sqlx::query_as::<_, ProjectRow>(
+            "SELECT id, name, description, created_at, updated_at
+             FROM projects WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| StoreError::ProjectNotFound(id.to_owned()))?;
+
+        Ok(row.into())
+    }
+
+    /// 更新已有项目（整体覆盖写入）。
+    ///
+    /// 自动刷新 `updated_at` 时间戳。
+    pub async fn update_project(&self, project: &mut Project) -> Result<(), StoreError> {
+        // 确认项目存在
+        let exists = sqlx::query("SELECT 1 FROM projects WHERE id = ?")
+            .bind(&project.id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+        if !exists {
+            return Err(StoreError::ProjectNotFound(project.id.clone()));
+        }
+
+        project.updated_at = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "UPDATE projects
+             SET name = ?, description = ?, updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(&project.name)
+        .bind(&project.description)
+        .bind(&project.updated_at)
+        .bind(&project.id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// 根据 ID 删除项目。
+    ///
+    /// task_projects 关联行通过 CASCADE 自动删除。
+    pub async fn delete_project(&self, id: &str) -> Result<(), StoreError> {
+        let result = sqlx::query("DELETE FROM projects WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(StoreError::ProjectNotFound(id.to_owned()));
+        }
+        Ok(())
+    }
+
+    /// 列出所有已存储的项目。
+    ///
+    /// 按 `created_at` 升序排列返回。
+    pub async fn list_projects(&self) -> Result<Vec<Project>, StoreError> {
+        let rows = sqlx::query_as::<_, ProjectRow>(
+            "SELECT id, name, description, created_at, updated_at
+             FROM projects ORDER BY created_at ASC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    // ------------------------------------------------------------------
+    // 任务-项目关联 API
+    // ------------------------------------------------------------------
+
+    /// 将任务添加到指定项目。
+    pub async fn add_task_to_project(
+        &self,
+        task_id: &str,
+        project_id: &str,
+    ) -> Result<(), StoreError> {
+        // 验证任务存在
+        let task_exists = sqlx::query("SELECT 1 FROM tasks WHERE id = ?")
+            .bind(task_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+        if !task_exists {
+            return Err(StoreError::NotFound(task_id.to_owned()));
+        }
+
+        // 验证项目存在
+        let project_exists = sqlx::query("SELECT 1 FROM projects WHERE id = ?")
+            .bind(project_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+        if !project_exists {
+            return Err(StoreError::ProjectNotFound(project_id.to_owned()));
+        }
+
+        sqlx::query(
+            "INSERT INTO task_projects (task_id, project_id) VALUES (?, ?)",
+        )
+        .bind(task_id)
+        .bind(project_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// 将任务从指定项目中移除。
+    pub async fn remove_task_from_project(
+        &self,
+        task_id: &str,
+        project_id: &str,
+    ) -> Result<(), StoreError> {
+        let result = sqlx::query(
+            "DELETE FROM task_projects WHERE task_id = ? AND project_id = ?",
+        )
+        .bind(task_id)
+        .bind(project_id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(StoreError::NotFound(format!(
+                "任务 {task_id} 与项目 {project_id} 之间不存在关联"
+            )));
+        }
+        Ok(())
+    }
+
+    /// 获取指定任务关联的所有项目。
+    pub async fn get_projects_for_task(
+        &self,
+        task_id: &str,
+    ) -> Result<Vec<Project>, StoreError> {
+        let rows = sqlx::query_as::<_, ProjectRow>(
+            "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
+             FROM projects p
+             INNER JOIN task_projects tp ON p.id = tp.project_id
+             WHERE tp.task_id = ?
+             ORDER BY p.created_at ASC",
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// 获取指定项目关联的所有任务。
+    pub async fn get_tasks_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<Task>, StoreError> {
+        let rows = sqlx::query_as::<_, TaskRow>(
+            "SELECT t.id, t.task_description, t.context_for_all_tasks, t.metadata, t.created_at, t.updated_at
+             FROM tasks t
+             INNER JOIN task_projects tp ON t.id = tp.task_id
+             WHERE tp.project_id = ?
+             ORDER BY t.created_at ASC",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut tasks = Vec::with_capacity(rows.len());
+        for row in rows {
+            let checklist = self.load_checklist_items(&row.id).await?;
+            let notes = self.load_notes(&row.id).await?;
+            let resources = self.load_resources(&row.id).await?;
+            let metadata = row.metadata.and_then(|s| serde_json::from_str(&s).ok());
+            tasks.push(Task {
+                id: row.id,
+                task_description: row.task_description,
+                context_for_all_tasks: row.context_for_all_tasks,
+                checklist,
+                notes,
+                resources,
+                metadata,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+
+        Ok(tasks)
+    }
+
+    // ------------------------------------------------------------------
+    // 智能删除
+    // ------------------------------------------------------------------
+
+    /// 删除项目及其所有关联任务。
+    ///
+    /// 先获取项目关联的所有任务 ID 并逐个删除，然后删除项目本身。
+    /// task_projects 关联行通过 CASCADE 自动清理。
+    pub async fn delete_project_with_tasks(&self, id: &str) -> Result<(), StoreError> {
+        // 验证项目存在
+        let exists = sqlx::query("SELECT 1 FROM projects WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+        if !exists {
+            return Err(StoreError::ProjectNotFound(id.to_owned()));
+        }
+
+        // 获取所有关联任务 ID
+        let task_ids: Vec<(String,)> = sqlx::query_as(
+            "SELECT task_id FROM task_projects WHERE project_id = ?",
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        // 逐个删除任务（CASCADE 会清理 task_projects）
+        for (task_id,) in task_ids {
+            self.delete_task(&task_id).await?;
+        }
+
+        // 删除项目本身
+        self.delete_project(id).await?;
+
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
     // 内部辅助方法
     // ------------------------------------------------------------------
 
@@ -409,6 +698,28 @@ impl From<ChecklistItemRow> for ChecklistItem {
             detailed_description: row.detailed_description,
             context_and_plan: row.context_and_plan,
             done: row.done,
+        }
+    }
+}
+
+/// projects 表行映射。
+#[derive(sqlx::FromRow)]
+struct ProjectRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<ProjectRow> for Project {
+    fn from(row: ProjectRow) -> Self {
+        Project {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         }
     }
 }
@@ -495,6 +806,7 @@ mod tests {
                 vec!["笔记1".to_owned()],
                 vec![],
                 None,
+                None,
             )
             .await
             .expect("创建任务失败");
@@ -518,7 +830,7 @@ mod tests {
         let (store, _dir) = temp_store().await;
 
         let mut task = store
-            .create_task("t1", None, vec![], vec![], vec![], None)
+            .create_task("t1", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
         let original_updated = task.updated_at.clone();
@@ -537,7 +849,7 @@ mod tests {
         let (store, _dir) = temp_store().await;
 
         let task = store
-            .create_task("t2", None, vec![], vec![], vec![], None)
+            .create_task("t2", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -550,11 +862,11 @@ mod tests {
         let (store, _dir) = temp_store().await;
 
         store
-            .create_task("t-a", None, vec![], vec![], vec![], None)
+            .create_task("t-a", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
         store
-            .create_task("t-b", None, vec![], vec![], vec![], None)
+            .create_task("t-b", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -626,6 +938,7 @@ mod tests {
                 vec!["笔记A".to_owned(), "笔记B".to_owned()],
                 vec![res],
                 Some(meta),
+                None,
             )
             .await
             .expect("创建任务失败");
@@ -664,17 +977,17 @@ mod tests {
         let (store, _dir) = temp_store().await;
 
         let t1 = store
-            .create_task("first", None, vec![], vec![], vec![], None)
+            .create_task("first", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         let t2 = store
-            .create_task("second", None, vec![], vec![], vec![], None)
+            .create_task("second", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         let t3 = store
-            .create_task("third", None, vec![], vec![], vec![], None)
+            .create_task("third", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -709,6 +1022,7 @@ mod tests {
                 vec![item],
                 vec!["将被删除的笔记".to_owned()],
                 vec![res],
+                None,
                 None,
             )
             .await

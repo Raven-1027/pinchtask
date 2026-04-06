@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::models::project::Project;
 use crate::models::task::Task;
 use crate::store::TaskStore;
 
@@ -228,6 +229,143 @@ pub enum View {
     TaskForm,
     /// 帮助面板
     Help,
+    /// 项目列表视图
+    ProjectList,
+    /// 项目详情视图
+    ProjectDetail,
+    /// 项目创建/编辑表单
+    ProjectForm,
+}
+
+// ── 项目表单字段 ───────────────────────────────────────────────────────────
+
+/// 项目表单中可聚焦的字段。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ProjectFormField {
+    /// 项目名称（必填）
+    Name,
+    /// 项目描述（可选）
+    Description,
+}
+
+impl ProjectFormField {
+    /// 所有字段按 Tab 顺序排列。
+    const ORDER: [ProjectFormField; 2] = [ProjectFormField::Name, ProjectFormField::Description];
+
+    /// 返回下一个字段（循环）。
+    pub fn next(self) -> Self {
+        let idx = self.index();
+        Self::ORDER[(idx + 1) % Self::ORDER.len()]
+    }
+
+    /// 返回上一个字段（循环）。
+    pub fn prev(self) -> Self {
+        let idx = self.index();
+        if idx == 0 {
+            Self::ORDER[Self::ORDER.len() - 1]
+        } else {
+            Self::ORDER[idx - 1]
+        }
+    }
+
+    /// 字段在 ORDER 中的索引。
+    fn index(self) -> usize {
+        Self::ORDER.iter().position(|&f| f == self).unwrap()
+    }
+
+    /// 返回字段的中文标签。
+    pub fn label(self) -> &'static str {
+        match self {
+            ProjectFormField::Name => "名称",
+            ProjectFormField::Description => "描述",
+        }
+    }
+
+    /// 返回字段的占位提示。
+    pub fn placeholder(self) -> &'static str {
+        match self {
+            ProjectFormField::Name => "输入项目名称...",
+            ProjectFormField::Description => "输入项目描述（可选）...",
+        }
+    }
+}
+
+// ── 项目表单模式 ───────────────────────────────────────────────────────────
+
+/// 项目表单操作模式。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProjectFormMode {
+    /// 新建项目
+    Create,
+    /// 编辑已有项目
+    Edit,
+}
+
+/// 项目表单状态。
+#[derive(Debug, Clone)]
+pub struct ProjectFormState {
+    /// 操作模式（新建 / 编辑）
+    pub mode: ProjectFormMode,
+    /// 编辑模式下的项目 ID
+    pub editing_project_id: Option<String>,
+    /// 名称字段内容
+    pub name: String,
+    /// 描述字段内容
+    pub description: String,
+    /// 当前聚焦字段
+    pub focused_field: ProjectFormField,
+    /// 表单校验错误
+    pub error: Option<String>,
+}
+
+impl ProjectFormState {
+    /// 创建用于新建项目的空表单。
+    pub fn new_create() -> Self {
+        Self {
+            mode: ProjectFormMode::Create,
+            editing_project_id: None,
+            name: String::new(),
+            description: String::new(),
+            focused_field: ProjectFormField::Name,
+            error: None,
+        }
+    }
+
+    /// 创建用于编辑已有项目的表单，预填充现有数据。
+    pub fn new_edit(project: &Project) -> Self {
+        Self {
+            mode: ProjectFormMode::Edit,
+            editing_project_id: Some(project.id.clone()),
+            name: project.name.clone(),
+            description: project.description.clone().unwrap_or_default(),
+            focused_field: ProjectFormField::Name,
+            error: None,
+        }
+    }
+
+    /// 获取当前聚焦字段的可变引用。
+    pub fn focused_value_mut(&mut self) -> &mut String {
+        match self.focused_field {
+            ProjectFormField::Name => &mut self.name,
+            ProjectFormField::Description => &mut self.description,
+        }
+    }
+
+    /// 获取当前聚焦字段的不可变引用。
+    pub fn focused_value(&self) -> &str {
+        match self.focused_field {
+            ProjectFormField::Name => &self.name,
+            ProjectFormField::Description => &self.description,
+        }
+    }
+
+    /// 校验表单数据，返回错误信息。
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("项目名称不能为空".to_owned());
+        }
+        Ok(())
+    }
 }
 
 // ── 排序模式 ───────────────────────────────────────────────────────────────
@@ -317,6 +455,24 @@ pub struct App {
     /// 当前表单状态（进入 TaskForm 视图时创建）
     form_state: Option<TaskFormState>,
 
+    // ── 项目列表状态 ──────────────────────────────────────────────────
+    /// 项目列表缓存
+    projects: Vec<Project>,
+    /// 项目列表选中索引
+    project_selected_index: usize,
+    /// 项目列表滚动偏移
+    project_scroll_offset: usize,
+    /// 当前查看详情的项目
+    current_project: Option<Project>,
+    /// 当前项目关联的任务列表
+    project_tasks: Vec<Task>,
+    /// 项目详情中关联任务选中索引
+    project_task_selected_index: usize,
+    /// 项目表单状态
+    project_form_state: Option<ProjectFormState>,
+    /// 是否显示项目删除确认
+    confirm_delete_project: bool,
+
     // ── 资源输入缓冲 ──────────────────────────────────────────────────
     /// 添加资源时暂存名称（AddingResourceName 完成后保存，AddingResourceUrl 完成后使用）
     resource_name_buffer: String,
@@ -356,6 +512,14 @@ impl App {
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             form_state: None,
+            projects: Vec::new(),
+            project_selected_index: 0,
+            project_scroll_offset: 0,
+            current_project: None,
+            project_tasks: Vec::new(),
+            project_task_selected_index: 0,
+            project_form_state: None,
+            confirm_delete_project: false,
             resource_name_buffer: String::new(),
             should_quit: false,
             message: None,
@@ -444,6 +608,46 @@ impl App {
     /// 获取表单状态引用。
     pub fn form_state(&self) -> Option<&TaskFormState> {
         self.form_state.as_ref()
+    }
+
+    /// 获取项目列表引用。
+    pub fn projects(&self) -> &[Project] {
+        &self.projects
+    }
+
+    /// 获取项目选中索引。
+    pub fn project_selected_index(&self) -> usize {
+        self.project_selected_index
+    }
+
+    /// 获取项目滚动偏移。
+    pub fn project_scroll_offset(&self) -> usize {
+        self.project_scroll_offset
+    }
+
+    /// 获取当前查看详情的项目。
+    pub fn current_project(&self) -> Option<&Project> {
+        self.current_project.as_ref()
+    }
+
+    /// 获取项目关联任务列表。
+    pub fn project_tasks(&self) -> &[Task] {
+        &self.project_tasks
+    }
+
+    /// 获取项目关联任务选中索引。
+    pub fn project_task_selected_index(&self) -> usize {
+        self.project_task_selected_index
+    }
+
+    /// 获取项目表单状态引用。
+    pub fn project_form_state(&self) -> Option<&ProjectFormState> {
+        self.project_form_state.as_ref()
+    }
+
+    /// 是否显示项目删除确认对话框。
+    pub fn confirm_delete_project(&self) -> bool {
+        self.confirm_delete_project
     }
 
     /// 是否显示删除笔记确认对话框。
@@ -688,9 +892,13 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => {
-                // TaskForm 视图中 q 键作为普通输入
-                if self.view == View::TaskForm {
-                    self.handle_task_form_key(key);
+                // TaskForm / ProjectForm 视图中 q 键作为普通输入
+                if self.view == View::TaskForm || self.view == View::ProjectForm {
+                    if self.view == View::TaskForm {
+                        self.handle_task_form_key(key);
+                    } else {
+                        self.handle_project_form_key(key);
+                    }
                     return Ok(());
                 }
                 if self.view == View::Help {
@@ -699,34 +907,47 @@ impl App {
                     self.confirm_delete = false;
                 } else if self.confirm_delete_note {
                     self.confirm_delete_note = false;
+                } else if self.confirm_delete_project {
+                    self.confirm_delete_project = false;
                 } else {
                     self.quit();
                 }
             }
             KeyCode::Char('?') => {
-                if self.view == View::TaskForm {
-                    // TaskForm 视图中 ? 键作为普通输入
-                    self.handle_task_form_key(key);
+                // TaskForm / ProjectForm 视图中 ? 键作为普通输入
+                if self.view == View::TaskForm || self.view == View::ProjectForm {
+                    if self.view == View::TaskForm {
+                        self.handle_task_form_key(key);
+                    } else {
+                        self.handle_project_form_key(key);
+                    }
                     return Ok(());
                 }
-                if !self.confirm_delete {
+                if !self.confirm_delete && !self.confirm_delete_project {
                     self.show_help();
                 }
             }
             KeyCode::Esc => {
-                // TaskForm 视图中 Esc 由表单处理器处理
-                if self.view == View::TaskForm {
-                    self.handle_task_form_key(key);
+                // TaskForm / ProjectForm 视图中 Esc 由表单处理器处理
+                if self.view == View::TaskForm || self.view == View::ProjectForm {
+                    if self.view == View::TaskForm {
+                        self.handle_task_form_key(key);
+                    } else {
+                        self.handle_project_form_key(key);
+                    }
                     return Ok(());
                 }
                 if self.confirm_delete {
                     self.confirm_delete = false;
                 } else if self.confirm_delete_note {
                     self.confirm_delete_note = false;
+                } else if self.confirm_delete_project {
+                    self.confirm_delete_project = false;
                 } else {
                     match self.view {
                         View::Help => self.view = self.previous_view.clone(),
                         View::TaskDetail => self.view = View::TaskList,
+                        View::ProjectDetail => self.view = View::ProjectList,
                         _ => {}
                     }
                 }
@@ -754,6 +975,23 @@ impl App {
             }
             _ if self.view == View::TaskForm => {
                 self.handle_task_form_key(key);
+            }
+            _ if self.view == View::ProjectList => {
+                if self.confirm_delete_project {
+                    self.handle_delete_project_confirm_key(key);
+                } else {
+                    self.handle_project_list_key(key)?;
+                }
+            }
+            _ if self.view == View::ProjectDetail => {
+                if self.confirm_delete_project {
+                    self.handle_delete_project_confirm_key(key);
+                } else {
+                    self.handle_project_detail_key(key)?;
+                }
+            }
+            _ if self.view == View::ProjectForm => {
+                self.handle_project_form_key(key);
             }
             _ => {}
         }
@@ -888,6 +1126,11 @@ impl App {
             // 刷新列表
             KeyCode::Char('r') => {
                 self.spawn_load_tasks();
+            }
+            // 切换到项目列表
+            KeyCode::Char('p') => {
+                self.spawn_load_projects();
+                self.view = View::ProjectList;
             }
             // 切换排序方式
             KeyCode::Tab => {
@@ -1424,6 +1667,232 @@ impl App {
         }
     }
 
+    // ── 项目列表键盘处理 ────────────────────────────────────────────
+
+    /// 项目列表视图的键盘处理。
+    fn handle_project_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::KeyCode;
+
+        let count = self.projects.len();
+
+        match key.code {
+            // 上下移动
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.project_selected_index > 0 {
+                    self.project_selected_index -= 1;
+                    self.adjust_project_scroll();
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if count > 0 && self.project_selected_index < count - 1 {
+                    self.project_selected_index += 1;
+                    self.adjust_project_scroll();
+                }
+            }
+            // 查看详情
+            KeyCode::Enter => {
+                if let Some(project) = self.projects.get(self.project_selected_index) {
+                    let project_id = project.id.clone();
+                    self.spawn_load_project_detail(project_id);
+                    self.message = Some("正在加载项目详情...".to_owned());
+                }
+            }
+            // 新建项目
+            KeyCode::Char('n') => {
+                self.project_form_state = Some(ProjectFormState::new_create());
+                self.view = View::ProjectForm;
+            }
+            // 删除项目（显示确认）
+            KeyCode::Char('d') => {
+                if !self.projects.is_empty() {
+                    self.confirm_delete_project = true;
+                }
+            }
+            // 刷新列表
+            KeyCode::Char('r') => {
+                self.spawn_load_projects();
+            }
+            // 返回任务列表
+            KeyCode::Esc => {
+                self.view = View::TaskList;
+                self.spawn_load_tasks();
+            }
+            // Home/End 快速跳转
+            KeyCode::Home => {
+                self.project_selected_index = 0;
+                self.project_scroll_offset = 0;
+            }
+            KeyCode::End => {
+                if count > 0 {
+                    self.project_selected_index = count - 1;
+                    self.adjust_project_scroll();
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// 项目详情视图的键盘处理。
+    fn handle_project_detail_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::KeyCode;
+
+        let task_count = self.project_tasks.len();
+
+        match key.code {
+            // 上下移动关联任务
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.project_task_selected_index > 0 {
+                    self.project_task_selected_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if task_count > 0 && self.project_task_selected_index < task_count - 1 {
+                    self.project_task_selected_index += 1;
+                }
+            }
+            // Enter 查看关联任务详情
+            KeyCode::Enter => {
+                if let Some(task) = self.project_tasks.get(self.project_task_selected_index) {
+                    let task_id = task.id.clone();
+                    self.spawn_load_task_detail(task_id);
+                    self.message = Some("正在加载任务详情...".to_owned());
+                }
+            }
+            // E 编辑项目
+            KeyCode::Char('E') => {
+                if let Some(project) = &self.current_project {
+                    self.project_form_state = Some(ProjectFormState::new_edit(project));
+                    self.view = View::ProjectForm;
+                }
+            }
+            // d 删除项目
+            KeyCode::Char('d') => {
+                if self.current_project.is_some() {
+                    self.confirm_delete_project = true;
+                }
+            }
+            // Esc 返回项目列表
+            KeyCode::Esc => {
+                self.view = View::ProjectList;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// 项目删除确认对话框的键盘处理。
+    fn handle_delete_project_confirm_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(project) = &self.current_project {
+                    let project_id = project.id.clone();
+                    self.confirm_delete_project = false;
+                    self.spawn_delete_project(project_id);
+                } else if let Some(project) = self.projects.get(self.project_selected_index) {
+                    let project_id = project.id.clone();
+                    self.confirm_delete_project = false;
+                    self.spawn_delete_project(project_id);
+                } else {
+                    self.confirm_delete_project = false;
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.confirm_delete_project = false;
+            }
+            _ => {}
+        }
+    }
+
+    /// 项目表单视图的键盘处理。
+    fn handle_project_form_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+
+        let Some(form) = self.project_form_state.as_mut() else {
+            return;
+        };
+
+        match key.code {
+            // Esc 取消表单
+            KeyCode::Esc => {
+                self.project_form_state = None;
+                self.view = if self.current_project.is_some() {
+                    View::ProjectDetail
+                } else {
+                    View::ProjectList
+                };
+                self.message = Some("已取消".to_owned());
+            }
+            // Tab 切换到下一个字段
+            KeyCode::Tab => {
+                form.focused_field = form.focused_field.next();
+                form.error = None;
+            }
+            // BackTab (Shift+Tab) 切换到上一个字段
+            KeyCode::BackTab => {
+                form.focused_field = form.focused_field.prev();
+                form.error = None;
+            }
+            // Enter 提交表单
+            KeyCode::Enter => {
+                if let Err(e) = form.validate() {
+                    form.error = Some(e);
+                    return;
+                }
+
+                let name = form.name.trim().to_owned();
+                let description = form.description.trim().to_owned();
+                let mode = form.mode.clone();
+                let editing_project_id = form.editing_project_id.clone();
+
+                self.project_form_state = None;
+
+                match mode {
+                    ProjectFormMode::Create => {
+                        self.spawn_create_project(
+                            name,
+                            if description.is_empty() { None } else { Some(description) },
+                        );
+                    }
+                    ProjectFormMode::Edit => {
+                        if let Some(project_id) = editing_project_id {
+                            self.spawn_update_project(
+                                project_id,
+                                name,
+                                if description.is_empty() { None } else { Some(description) },
+                            );
+                        }
+                    }
+                }
+            }
+            // Backspace 删除末尾字符
+            KeyCode::Backspace => {
+                form.focused_value_mut().pop();
+                form.error = None;
+            }
+            // 普通字符输入
+            KeyCode::Char(c) => {
+                form.focused_value_mut().push(c);
+                form.error = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// 项目列表滚动调整。
+    fn adjust_project_scroll(&mut self) {
+        let visible_height = 20;
+        if self.project_selected_index < self.project_scroll_offset {
+            self.project_scroll_offset = self.project_selected_index;
+        } else if self.project_selected_index >= self.project_scroll_offset + visible_height {
+            self.project_scroll_offset = self.project_selected_index - visible_height + 1;
+        }
+    }
+
     // ── 任务表单键盘处理 ────────────────────────────────────────────────
 
     /// 任务表单视图的键盘处理。
@@ -1564,6 +2033,7 @@ impl App {
                     vec![],
                     vec![],
                     metadata,
+                    None,
                 )
                 .await
                 {
@@ -1669,6 +2139,258 @@ impl App {
         }
     }
 
+    // ── 项目异步方法 ────────────────────────────────────────────────────
+
+    /// 异步加载项目列表。
+    pub fn spawn_load_projects(&mut self) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = TaskStore::new(data_dir).await;
+                match store {
+                    Ok(s) => match crate::core::project::list_projects(&s).await {
+                        Ok(projects) => {
+                            let _ = tx.send(AppEvent::Action(Action::ProjectsLoaded(projects)));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(AppEvent::Action(Action::Error(
+                                format!("加载项目列表失败: {e}"),
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        let _ = tx
+                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                    }
+                }
+            });
+            self.message = Some("正在加载项目列表...".to_owned());
+        }
+    }
+
+    /// 异步加载项目详情。
+    pub fn spawn_load_project_detail(&mut self, project_id: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = TaskStore::new(data_dir).await;
+                match store {
+                    Ok(s) => match crate::core::project::get_project(&s, &project_id).await {
+                        Ok(project) => {
+                            let _ = tx.send(AppEvent::Action(Action::ProjectDetailLoaded(project)));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(AppEvent::Action(Action::Error(
+                                format!("加载项目详情失败: {e}"),
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        let _ = tx
+                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步加载项目关联的任务列表。
+    fn spawn_load_project_tasks(&mut self, project_id: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = TaskStore::new(data_dir).await;
+                match store {
+                    Ok(s) => match crate::core::project::get_tasks_for_project(&s, &project_id).await {
+                        Ok(tasks) => {
+                            let _ = tx.send(AppEvent::Action(Action::ProjectTasksLoaded(tasks)));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(AppEvent::Action(Action::Error(
+                                format!("加载项目任务失败: {e}"),
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        let _ = tx
+                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步创建项目。
+    fn spawn_create_project(&mut self, name: String, description: Option<String>) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            self.message = Some("正在创建项目...".to_owned());
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::project::create_project(
+                    &store,
+                    &name,
+                    description.as_deref(),
+                )
+                .await
+                {
+                    Ok(project) => {
+                        let _ = tx.send(AppEvent::Action(Action::ProjectCreated(project)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("创建项目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步更新项目。
+    fn spawn_update_project(
+        &mut self,
+        project_id: String,
+        name: String,
+        description: Option<String>,
+    ) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            self.message = Some("正在更新项目...".to_owned());
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::project::update_project(
+                    &store,
+                    &project_id,
+                    Some(&name),
+                    description.as_deref(),
+                )
+                .await
+                {
+                    Ok(project) => {
+                        let _ = tx.send(AppEvent::Action(Action::ProjectUpdated(project)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("更新项目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步删除项目。
+    fn spawn_delete_project(&mut self, project_id: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::project::delete_project(&store, &project_id).await {
+                    Ok(()) => {
+                        let _ = tx.send(AppEvent::Action(Action::ProjectDeleted(project_id)));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("删除项目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步添加任务到项目。
+    #[allow(dead_code)]
+    pub fn spawn_add_task_to_project(&mut self, task_id: String, project_id: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::project::add_task_to_project(&store, &task_id, &project_id)
+                    .await
+                {
+                    Ok(()) => {
+                        // 刷新项目详情
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            "任务已添加到项目".to_owned(),
+                        )));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("添加任务到项目失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
+    /// 异步从项目中移除任务。
+    #[allow(dead_code)]
+    pub fn spawn_remove_task_from_project(&mut self, task_id: String, project_id: String) {
+        let data_dir = self.store_cloned();
+        if let Some(tx) = self.action_tx.clone() {
+            tokio::spawn(async move {
+                let store = match TaskStore::new(data_dir).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("数据库连接失败: {e}"),
+                        )));
+                        return;
+                    }
+                };
+                match crate::core::project::remove_task_from_project(&store, &task_id, &project_id)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            "任务已从项目中移除".to_owned(),
+                        )));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AppEvent::Action(Action::Error(
+                            format!("移除任务失败: {e}"),
+                        )));
+                    }
+                }
+            });
+        }
+    }
+
     /// 异步操作结果处理。
     fn handle_action(&mut self, action: Action) -> anyhow::Result<()> {
         match action {
@@ -1749,6 +2471,63 @@ impl App {
             Action::ResourceDeleted(task) => {
                 self.current_task = Some(task);
                 self.message = Some("资源已删除".to_owned());
+            }
+            Action::ProjectsLoaded(projects) => {
+                self.projects = projects;
+                if self.project_selected_index >= self.projects.len() && !self.projects.is_empty() {
+                    self.project_selected_index = self.projects.len() - 1;
+                } else if self.projects.is_empty() {
+                    self.project_selected_index = 0;
+                }
+                self.message = Some(format!("已加载 {} 个项目", self.projects.len()));
+                self.error_message = None;
+            }
+            Action::ProjectDetailLoaded(project) => {
+                // 需要先保存 project 再异步加载关联任务
+                let project_id = project.id.clone();
+                self.current_project = Some(project);
+                self.project_task_selected_index = 0;
+                self.view = View::ProjectDetail;
+                self.error_message = None;
+                // 异步加载关联任务
+                self.spawn_load_project_tasks(project_id);
+            }
+            Action::ProjectCreated(project) => {
+                self.message = Some("项目已创建".to_owned());
+                self.error_message = None;
+                self.spawn_load_projects();
+                self.current_project = Some(project);
+                self.view = View::ProjectDetail;
+            }
+            Action::ProjectUpdated(project) => {
+                // 更新列表缓存
+                if let Some(p) = self.projects.iter_mut().find(|p| p.id == project.id) {
+                    *p = project.clone();
+                }
+                self.current_project = Some(project);
+                self.view = View::ProjectDetail;
+                self.message = Some("项目已更新".to_owned());
+                self.error_message = None;
+            }
+            Action::ProjectDeleted(project_id) => {
+                if self.current_project.as_ref().map_or(false, |p| p.id == project_id) {
+                    self.current_project = None;
+                    self.project_tasks.clear();
+                }
+                self.projects.retain(|p| p.id != project_id);
+                if self.project_selected_index >= self.projects.len() && !self.projects.is_empty() {
+                    self.project_selected_index = self.projects.len() - 1;
+                } else if self.projects.is_empty() {
+                    self.project_selected_index = 0;
+                }
+                self.view = View::ProjectList;
+                self.message = Some("项目已删除".to_owned());
+                self.error_message = None;
+            }
+            Action::ProjectTasksLoaded(tasks) => {
+                self.project_tasks = tasks;
+                self.project_task_selected_index = 0;
+                self.message = Some(format!("已加载 {} 个关联任务", self.project_tasks.len()));
             }
             Action::Error(err) => {
                 self.error_message = Some(err);
@@ -2042,7 +2821,15 @@ mod tests {
 
     #[test]
     fn view_variants_distinct() {
-        let views = [View::TaskList, View::TaskDetail, View::TaskForm, View::Help];
+        let views = [
+            View::TaskList,
+            View::TaskDetail,
+            View::TaskForm,
+            View::Help,
+            View::ProjectList,
+            View::ProjectDetail,
+            View::ProjectForm,
+        ];
         for (i, a) in views.iter().enumerate() {
             for (j, b) in views.iter().enumerate() {
                 if i != j {

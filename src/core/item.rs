@@ -175,7 +175,7 @@ mod tests {
             })
             .collect();
         let task = store
-            .create_task("测试任务", None, items, vec![], vec![], None)
+            .create_task("测试任务", None, items, vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
         (store, dir, task)
@@ -189,7 +189,7 @@ mod tests {
     async fn add_checklist_item_success() {
         let (store, _dir) = temp_store().await;
         let task = store
-            .create_task("t", None, vec![], vec![], vec![], None)
+            .create_task("t", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -218,7 +218,7 @@ mod tests {
     async fn add_checklist_item_without_plan() {
         let (store, _dir) = temp_store().await;
         let task = store
-            .create_task("t", None, vec![], vec![], vec![], None)
+            .create_task("t", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -388,7 +388,7 @@ mod tests {
             done: true,
         };
         let task = store
-            .create_task("t", None, vec![item], vec![], vec![], None)
+            .create_task("t", None, vec![item], vec![], vec![], None, None)
             .await
             .expect("创建失败");
 

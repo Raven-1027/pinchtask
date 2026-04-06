@@ -148,6 +148,7 @@ impl PinchTaskServer {
             params.notes.unwrap_or_default(),
             resources,
             metadata,
+            None,
         )
         .await
         .into_tool_result(|t| task_to_result(&t))

@@ -1,7 +1,7 @@
 //! 任务实体操作：new / ls / show / edit / rm。
 
 use anyhow::Result;
-use clap::Args;
+use clap::{Args, Subcommand};
 
 use crate::core;
 use crate::models::task::TaskMetadata;
@@ -9,6 +9,25 @@ use crate::store::TaskStore;
 
 use super::output;
 use super::resolve::resolve_task_id;
+
+// ---------------------------------------------------------------------------
+// 子命令枚举
+// ---------------------------------------------------------------------------
+
+/// 任务子命令集。
+#[derive(Subcommand, Debug)]
+pub enum TaskCommands {
+    /// 创建新任务
+    New(NewArgs),
+    /// 列出任务
+    Ls(LsArgs),
+    /// 查看任务详情
+    Show(ShowArgs),
+    /// 编辑任务描述、上下文或元数据
+    Edit(TaskEditArgs),
+    /// 删除任务
+    Rm(TaskRmArgs),
+}
 
 // ---------------------------------------------------------------------------
 // Args 结构体
@@ -22,6 +41,9 @@ pub struct NewArgs {
     /// 共享上下文
     #[arg(short, long)]
     pub context: Option<String>,
+    /// 关联到指定项目（可多次使用）
+    #[arg(short, long = "project")]
+    pub projects: Vec<String>,
 }
 
 /// 列出任务
@@ -51,12 +73,57 @@ pub struct ShowArgs {
     pub id: String,
 }
 
+/// 编辑任务
+#[derive(Args, Debug)]
+pub struct TaskEditArgs {
+    /// 任务 ID（支持短前缀）
+    pub id: String,
+    /// 新的任务描述
+    #[arg(short, long)]
+    pub description: Option<String>,
+    /// 新的共享上下文
+    #[arg(short, long)]
+    pub context: Option<String>,
+    /// 优先级 (high / medium / low)
+    #[arg(long)]
+    pub priority: Option<String>,
+    /// 标签，逗号分隔
+    #[arg(long)]
+    pub tags: Option<String>,
+    /// 预计完成时间，ISO 8601
+    #[arg(long)]
+    pub eta: Option<String>,
+}
+
+/// 删除任务
+#[derive(Args, Debug)]
+pub struct TaskRmArgs {
+    /// 任务 ID（支持短前缀）
+    pub id: String,
+}
+
 // ---------------------------------------------------------------------------
 // 命令处理
 // ---------------------------------------------------------------------------
 
+/// 分发任务子命令。
+pub async fn run_task(command: &TaskCommands, store: &TaskStore, json: bool) -> Result<()> {
+    match command {
+        TaskCommands::New(args) => run_new(args, store, json).await,
+        TaskCommands::Ls(args) => run_ls(args, store, json).await,
+        TaskCommands::Show(args) => run_show(args, store, json).await,
+        TaskCommands::Edit(args) => run_edit(args, store, json).await,
+        TaskCommands::Rm(args) => run_rm(args, store, json).await,
+    }
+}
+
 /// 创建新任务。
-pub async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
+    let project_ids: Option<Vec<String>> = if args.projects.is_empty() {
+        None
+    } else {
+        Some(args.projects.clone())
+    };
     let task = core::initialize_task(
         store,
         &args.description,
@@ -65,6 +132,7 @@ pub async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()
         vec![],
         vec![],
         None,
+        project_ids.as_deref(),
     )
     .await?;
     output::print(output::Output::Task(&task), json);
@@ -72,7 +140,7 @@ pub async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()
 }
 
 /// 列出任务。
-pub async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
 
     // 过滤
@@ -123,7 +191,7 @@ pub async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> 
 }
 
 /// 查看任务详情。
-pub async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
     let task = store.get_task(&full_id).await?;
@@ -131,51 +199,40 @@ pub async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<
     Ok(())
 }
 
-/// 编辑任务描述、上下文或元数据（由 mod.rs Edit 分流调用）。
-///
-/// 传入的字段会在一次调用中全部更新，未传入的字段保持不变。
-pub async fn run_edit(
-    store: &TaskStore,
-    json: bool,
-    id: &str,
-    description: Option<&str>,
-    context: Option<&str>,
-    priority: Option<&str>,
-    tags: Option<&str>,
-    eta: Option<&str>,
-) -> Result<()> {
+/// 编辑任务描述、上下文或元数据。
+async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
-    let full_id = resolve_task_id(id, &tasks)?;
+    let full_id = resolve_task_id(&args.id, &tasks)?;
 
-    if description.is_none()
-        && context.is_none()
-        && priority.is_none()
-        && tags.is_none()
-        && eta.is_none()
+    if args.description.is_none()
+        && args.context.is_none()
+        && args.priority.is_none()
+        && args.tags.is_none()
+        && args.eta.is_none()
     {
         anyhow::bail!("至少需要指定一个可修改的字段 (--description / --context / --priority / --tags / --eta)");
     }
 
     // 更新 description
-    if let Some(desc) = description {
+    if let Some(desc) = &args.description {
         core::update_task_description(store, &full_id, desc).await?;
     }
     // 更新 context
-    if let Some(ctx) = context {
+    if let Some(ctx) = &args.context {
         core::update_context(store, &full_id, ctx).await?;
     }
     // 更新 metadata（priority / tags / eta）
-    if priority.is_some() || tags.is_some() || eta.is_some() {
+    if args.priority.is_some() || args.tags.is_some() || args.eta.is_some() {
         let existing = store.get_task(&full_id).await?;
         let mut metadata = existing.metadata.unwrap_or(TaskMetadata {
             tags: None,
             priority: None,
             estimated_completion_time: None,
         });
-        if let Some(p) = priority {
-            metadata.priority = Some(p.to_owned());
+        if let Some(ref p) = args.priority {
+            metadata.priority = Some(p.clone());
         }
-        if let Some(t) = tags {
+        if let Some(ref t) = args.tags {
             metadata.tags = Some(
                 t.split(',')
                     .map(|s| s.trim().to_owned())
@@ -183,8 +240,8 @@ pub async fn run_edit(
                     .collect(),
             );
         }
-        if let Some(e) = eta {
-            metadata.estimated_completion_time = Some(e.to_owned());
+        if let Some(ref e) = args.eta {
+            metadata.estimated_completion_time = Some(e.clone());
         }
         core::update_metadata(store, &full_id, metadata).await?;
     }
@@ -195,10 +252,10 @@ pub async fn run_edit(
     Ok(())
 }
 
-/// 删除任务（由 mod.rs Rm 分流调用）。
-pub async fn run_rm(store: &TaskStore, json: bool, id: &str) -> Result<()> {
+/// 删除任务。
+async fn run_rm(args: &TaskRmArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
-    let full_id = resolve_task_id(id, &tasks)?;
+    let full_id = resolve_task_id(&args.id, &tasks)?;
     core::clear_task(store, &full_id).await?;
     let short_id = &full_id[..8.min(full_id.len())];
     output::print(

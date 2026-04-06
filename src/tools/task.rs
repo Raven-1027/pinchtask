@@ -29,6 +29,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -42,7 +43,7 @@ mod tests {
     async fn add_checklist_item_and_mark_done() {
         let (store, _dir) = temp_store().await;
 
-        let task = core::initialize_task(&store, "t1", None, vec![], vec![], vec![], None)
+        let task = core::initialize_task(&store, "t1", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -61,7 +62,7 @@ mod tests {
     async fn add_note_and_resource() {
         let (store, _dir) = temp_store().await;
 
-        let task = core::initialize_task(&store, "t2", None, vec![], vec![], vec![], None)
+        let task = core::initialize_task(&store, "t2", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 

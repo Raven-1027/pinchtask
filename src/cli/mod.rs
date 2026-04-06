@@ -1,4 +1,4 @@
-//! CLI 模块入口 — 顶层命令行参数解析与扁平化子命令分发。
+//! CLI 模块入口 — 顶层命令行参数解析与嵌套子命令分发。
 
 use std::io;
 use std::path::PathBuf;
@@ -10,12 +10,12 @@ use clap_complete::{generate, shells::Shell};
 use crate::store::TaskStore;
 
 pub mod item;
+pub mod link;
 pub mod logging;
-pub mod meta;
 pub mod note;
 pub mod output;
+pub mod project;
 pub mod resolve;
-pub mod resource;
 pub mod server;
 pub mod task;
 
@@ -44,52 +44,7 @@ struct Cli {
     json: bool,
 }
 
-// ── 跨模块 Args ────────────────────────────────────────────────────────────
-
-/// 编辑任务或清单条目
-#[derive(ClapArgs, Debug)]
-struct EditArgs {
-    /// 任务 ID（支持短前缀）
-    id: String,
-    /// 清单条目索引（不传则编辑任务本身）
-    index: Option<usize>,
-    /// 新的任务描述（任务级）或条目描述（条目级）
-    #[arg(short, long)]
-    description: Option<String>,
-    /// 新的共享上下文（仅任务级）
-    #[arg(short, long)]
-    context: Option<String>,
-    /// 新标题（仅条目级）
-    #[arg(short, long)]
-    title: Option<String>,
-    /// 新计划（仅条目级）
-    #[arg(short, long)]
-    plan: Option<String>,
-    /// 标记为已完成（仅条目级）
-    #[arg(long, conflicts_with = "undone")]
-    done: bool,
-    /// 标记为未完成（仅条目级）
-    #[arg(long, conflicts_with = "done")]
-    undone: bool,
-    /// 优先级 (high / medium / low)（仅任务级）
-    #[arg(long)]
-    priority: Option<String>,
-    /// 标签，逗号分隔（仅任务级）
-    #[arg(long)]
-    tags: Option<String>,
-    /// 预计完成时间，ISO 8601（仅任务级）
-    #[arg(long)]
-    eta: Option<String>,
-}
-
-/// 删除任务或清单条目
-#[derive(ClapArgs, Debug)]
-struct RmArgs {
-    /// 任务 ID（支持短前缀）
-    id: String,
-    /// 清单条目索引（不传则删除任务本身）
-    index: Option<usize>,
-}
+// ── Shell 补全参数 ─────────────────────────────────────────────────────────
 
 /// Shell 补全脚本参数
 #[derive(ClapArgs, Debug)]
@@ -98,39 +53,30 @@ struct CompletionArgs {
     shell: Shell,
 }
 
-// ── 扁平化命令树 ───────────────────────────────────────────────────────────
+// ── 嵌套命令树 ─────────────────────────────────────────────────────────────
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// 创建新任务
-    New(task::NewArgs),
-    /// 列出任务
-    Ls(task::LsArgs),
-    /// 查看任务详情
-    Show(task::ShowArgs),
-    /// 编辑任务或清单条目
-    Edit(EditArgs),
-    /// 删除任务或清单条目
-    Rm(RmArgs),
-    /// 添加清单条目
-    Add(item::AddArgs),
-    /// 切换清单条目完成/未完成状态
-    Check(item::CheckArgs),
-    /// 移动清单条目顺序
-    Mv(item::MvArgs),
-    /// 查看清单进度摘要
-    Summary(item::SummaryArgs),
-    /// 添加笔记
-    Note(note::NoteArgs),
-    /// 设置标签和元数据
-    Tag(meta::TagArgs),
-    /// 添加资源引用
-    Link(resource::LinkArgs),
+    /// 任务管理
+    #[command(subcommand)]
+    Task(task::TaskCommands),
+    /// 清单条目管理
+    #[command(subcommand)]
+    Item(item::ItemCommands),
+    /// 笔记管理
+    #[command(subcommand)]
+    Note(note::NoteCommands),
+    /// 资源引用管理
+    #[command(subcommand)]
+    Link(link::LinkCommands),
+    /// 项目管理
+    #[command(subcommand)]
+    Project(project::ProjectCommands),
+    /// 启动 MCP 服务器（stdio 传输）
+    Serve,
     /// 启动交互式 TUI 界面
     #[cfg(feature = "tui")]
     Tui,
-    /// 启动 MCP 服务器（stdio 传输）
-    Serve,
     /// 生成 shell 补全脚本
     Completion(CompletionArgs),
 }
@@ -170,41 +116,11 @@ pub async fn run() -> Result<()> {
     let store = TaskStore::new(data_dir).await?;
 
     match &command {
-        Commands::New(args) => task::run_new(args, &store, json).await,
-        Commands::Ls(args) => task::run_ls(args, &store, json).await,
-        Commands::Show(args) => task::run_show(args, &store, json).await,
-        Commands::Edit(args) => match args.index {
-            Some(idx) => {
-                // metadata 字段仅用于任务级编辑，带 index 时禁止传入
-                if args.priority.is_some() || args.tags.is_some() || args.eta.is_some() {
-                    anyhow::bail!("--priority / --tags / --eta 仅用于任务级编辑，不能与 --index 同时使用");
-                }
-                item::run_edit_item(
-                    &store, json, &args.id, idx,
-                    args.title.as_deref(), args.description.as_deref(),
-                    args.plan.as_deref(), args.done, args.undone,
-                ).await
-            }
-            None => task::run_edit(
-                &store, json, &args.id,
-                args.description.as_deref(),
-                args.context.as_deref(),
-                args.priority.as_deref(),
-                args.tags.as_deref(),
-                args.eta.as_deref(),
-            ).await,
-        },
-        Commands::Rm(args) => match args.index {
-            Some(idx) => item::run_rm_item(&store, json, &args.id, idx).await,
-            None => task::run_rm(&store, json, &args.id).await,
-        },
-        Commands::Add(args) => item::run_add(args, &store, json).await,
-        Commands::Check(args) => item::run_check(args, &store, json).await,
-        Commands::Mv(args) => item::run_mv(args, &store, json).await,
-        Commands::Summary(args) => item::run_summary(args, &store, json).await,
-        Commands::Note(args) => note::run_note(args, &store, json).await,
-        Commands::Tag(args) => meta::run_tag(args, &store, json).await,
-        Commands::Link(args) => resource::run_link(args, &store, json).await,
+        Commands::Task(cmd) => task::run_task(cmd, &store, json).await,
+        Commands::Item(cmd) => item::run_item(cmd, &store, json).await,
+        Commands::Note(cmd) => note::run_note(cmd, &store, json).await,
+        Commands::Link(cmd) => link::run_link(cmd, &store, json).await,
+        Commands::Project(cmd) => project::run_project(cmd, &store, json).await,
         // 已在上方 match 中提前返回，不会到达
         Commands::Serve => unreachable!(),
         #[cfg(feature = "tui")]

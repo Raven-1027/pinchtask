@@ -8,6 +8,7 @@ use std::time::Duration;
 use crossterm::event::{Event as CrosstermEvent, KeyEvent};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+use crate::models::project::Project;
 use crate::models::task::Task;
 
 // ── 轮询超时 ───────────────────────────────────────────────────────────────
@@ -51,6 +52,18 @@ pub enum Action {
     ResourceAdded(Task),
     /// 资源已删除（携带更新后的任务）
     ResourceDeleted(Task),
+    /// 项目列表加载完成
+    ProjectsLoaded(Vec<Project>),
+    /// 项目详情加载完成
+    ProjectDetailLoaded(Project),
+    /// 项目已创建
+    ProjectCreated(Project),
+    /// 项目已更新
+    ProjectUpdated(Project),
+    /// 项目已删除（携带被删除项目的 ID）
+    ProjectDeleted(String),
+    /// 项目关联任务加载完成
+    ProjectTasksLoaded(Vec<Task>),
     /// 操作出错
     Error(String),
 }

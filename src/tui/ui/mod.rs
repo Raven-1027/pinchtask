@@ -2,6 +2,38 @@
 //!
 //! 负责将 `App` 状态绘制到终端帧缓冲区。
 //! 每个视图对应一个独立的渲染函数。
+//!
+//! ═══════════════════════════════════════════════════════════════════════
+//! 项目管理功能 — 视图架构设计
+//! ═══════════════════════════════════════════════════════════════════════
+//!
+//! 新增 View 变体:
+//!   - ProjectList:  项目列表视图（表格 + 选中高亮）
+//!   - ProjectDetail: 项目详情视图（名称/描述/时间 + 关联任务列表）
+//!   - ProjectForm:  项目表单视图（名称 + 描述）
+//!
+//! 导航路径:
+//!   TaskList ── p 键 ──▸ ProjectList
+//!   ProjectList ◂── Esc ── TaskList
+//!   ProjectList ── Enter ──▸ ProjectDetail
+//!   ProjectList ── n ──▸ ProjectForm（新建）
+//!   ProjectDetail ── E ──▸ ProjectForm（编辑）
+//!   ProjectDetail ── Enter ──▸ TaskDetail（查看关联任务）
+//!   ProjectDetail ◂── Esc ── ProjectList
+//!   ProjectForm ◂── Esc ── ProjectDetail / ProjectList
+//!
+//! 项目详情视图内容:
+//!   项目名、描述、创建时间、更新时间
+//!   关联任务列表（描述、进度、优先级）
+//!
+//! 项目表单:
+//!   名称（必填）+ 描述（可选）
+//!   Tab 切换字段，Enter 提交，Esc 取消
+//!
+//! 快捷键映射:
+//!   ProjectList: ↑↓/jk 移动，Enter 详情，n 新建，d 删除，r 刷新，Esc 返回
+//!   ProjectDetail: ↑↓/jk 移动任务，Enter 查看任务，E 编辑项目，d 删除项目，Esc 返回
+//!   ProjectForm: Tab 切换字段，Enter 提交，Esc 取消
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -11,6 +43,9 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use super::app::{App, FormField, FormMode, InputMode, View};
 
+pub mod project_detail;
+pub mod project_form;
+pub mod project_list;
 pub mod task_detail;
 pub mod task_list;
 pub mod theme;
@@ -45,6 +80,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         View::TaskDetail => draw_task_detail(f, chunks[1], app),
         View::TaskForm => draw_task_form(f, chunks[1], app),
         View::Help => draw_help(f, chunks[1], app),
+        View::ProjectList => draw_project_list(f, chunks[1], app),
+        View::ProjectDetail => draw_project_detail(f, chunks[1], app),
+        View::ProjectForm => draw_project_form(f, chunks[1], app),
     }
 
     // 删除确认对话框（覆盖层）
@@ -55,6 +93,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     // 笔记删除确认对话框（覆盖层）
     if app.confirm_delete_note() {
         draw_delete_note_confirm(f, size, app);
+    }
+
+    // 项目删除确认对话框（覆盖层）
+    if app.confirm_delete_project() {
+        draw_delete_project_confirm(f, size, app);
     }
 
     draw_status_bar(f, chunks[2], app);
@@ -86,6 +129,9 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
         View::TaskDetail => "任务详情",
         View::TaskForm => "新建/编辑任务",
         View::Help => "帮助",
+        View::ProjectList => "项目列表",
+        View::ProjectDetail => "项目详情",
+        View::ProjectForm => "新建/编辑项目",
     };
 
     let mut spans = vec![
@@ -155,7 +201,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     } else {
         let hints = match app.view() {
             View::TaskList => {
-                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r/Ctrl+R 刷新  / 搜索  Tab 排序  ? 帮助  q 退出"
+                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r/Ctrl+R 刷新  / 搜索  Tab 排序  p 项目  ? 帮助  q 退出"
             }
             View::TaskDetail => {
                 if app.input_mode() != &InputMode::Normal {
@@ -166,6 +212,13 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
             }
             View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
             View::Help => " Esc/? 返回  q 退出",
+            View::ProjectList => {
+                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r 刷新  Esc 返回任务列表"
+            }
+            View::ProjectDetail => {
+                " ↑↓/jk 移动  Enter 查看任务  E 编辑项目  d 删除项目  Esc 返回"
+            }
+            View::ProjectForm => " Tab 切换字段  Enter 提交  Esc 取消",
         };
         Line::from(Span::styled(hints, Style::default().fg(MUTED)))
     };
@@ -621,6 +674,60 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         ]),
         Line::from(""),
         Line::styled(
+            "  项目列表视图:",
+            section_title_style(),
+        ),
+        Line::from(vec![
+            Span::styled("    p        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    从任务列表进入项目列表"),
+        ]),
+        Line::from(vec![
+            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    上下移动选中"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    查看项目详情"),
+        ]),
+        Line::from(vec![
+            Span::styled("    n        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    新建项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    删除选中项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    返回任务列表"),
+        ]),
+        Line::from(""),
+        Line::styled(
+            "  项目详情视图:",
+            section_title_style(),
+        ),
+        Line::from(vec![
+            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    上下移动关联任务"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    查看关联任务详情"),
+        ]),
+        Line::from(vec![
+            Span::styled("    E        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    编辑项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    删除项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    返回项目列表"),
+        ]),
+        Line::from(""),
+        Line::styled(
             "  任务详情视图:",
             section_title_style(),
         ),
@@ -810,6 +917,115 @@ fn draw_delete_note_confirm(f: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(BORDER_DANGER))
             .title(Span::styled(
                 format!(" {} 删除笔记 ", ICON_WARN),
+                Style::default().fg(Color::Red),
+            )),
+    );
+
+    f.render_widget(paragraph, dialog_area);
+}
+
+// ── 项目列表视图 ───────────────────────────────────────────────────────────
+
+fn draw_project_list(f: &mut Frame, area: Rect, app: &App) {
+    let widget = project_list::ProjectList::new(app.projects(), app.project_selected_index());
+    f.render_widget(widget, area);
+}
+
+// ── 项目详情视图 ─────────────────────────────────────────────────────────────
+
+fn draw_project_detail(f: &mut Frame, area: Rect, app: &App) {
+    if let Some(project) = app.current_project() {
+        let widget = project_detail::ProjectDetail::new(
+            project,
+            app.project_tasks(),
+            app.project_task_selected_index(),
+        );
+        f.render_widget(widget, area);
+    } else {
+        let content = vec![
+            Line::from(""),
+            Line::styled("  正在加载项目详情...", Style::default().fg(MUTED)),
+        ];
+        let paragraph = Paragraph::new(content).wrap(Wrap { trim: true });
+        f.render_widget(paragraph, area);
+    }
+}
+
+// ── 项目表单视图 ─────────────────────────────────────────────────────────────
+
+fn draw_project_form(f: &mut Frame, area: Rect, app: &App) {
+    let Some(form) = app.project_form_state() else {
+        let content = vec![
+            Line::from(""),
+            Line::styled(
+                "  表单状态异常",
+                Style::default().fg(Color::Red),
+            ),
+        ];
+        let paragraph = Paragraph::new(content);
+        f.render_widget(paragraph, area);
+        return;
+    };
+
+    let widget = project_form::ProjectForm::new(form);
+    f.render_widget(widget, area);
+}
+
+// ── 项目删除确认对话框 ───────────────────────────────────────────────────────
+
+fn draw_delete_project_confirm(f: &mut Frame, area: Rect, app: &App) {
+    let width = 50.min(area.width.saturating_sub(4));
+    let height = 6;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let dialog_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, dialog_area);
+
+    let project_name = app
+        .current_project()
+        .map(|p| truncate_str(&p.name, 30))
+        .or_else(|| {
+            app.projects()
+                .get(app.project_selected_index())
+                .map(|p| truncate_str(&p.name, 30))
+        })
+        .unwrap_or_default();
+
+    let lines = vec![
+        Line::from(""),
+        Line::styled(
+            "  确认删除此项目？",
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!("  {project_name}")),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" 确认  "),
+            Span::styled(
+                "n/Esc",
+                Style::default()
+                    .fg(HIGHLIGHT_FG)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" 取消"),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(BORDER_DANGER))
+            .title(Span::styled(
+                format!(" {} 删除确认 ", ICON_WARN),
                 Style::default().fg(Color::Red),
             )),
     );

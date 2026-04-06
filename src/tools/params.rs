@@ -593,3 +593,9 @@ mod tests {
         assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("string"));
     }
 }
+
+    #[test]
+    fn print_new_task_schema() {
+        let schema = json_schema_for::<InitializeTaskParams>();
+        eprintln!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    }

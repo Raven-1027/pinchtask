@@ -56,7 +56,7 @@ mod tests {
     async fn add_note_success() {
         let (store, _dir) = temp_store().await;
         let task = store
-            .create_task("t", None, vec![], vec![], vec![], None)
+            .create_task("t", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -72,7 +72,7 @@ mod tests {
     async fn add_note_persists_to_db() {
         let (store, _dir) = temp_store().await;
         let task = store
-            .create_task("t", None, vec![], vec![], vec![], None)
+            .create_task("t", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -87,7 +87,7 @@ mod tests {
     async fn add_note_empty_content() {
         let (store, _dir) = temp_store().await;
         let task = store
-            .create_task("t", None, vec![], vec![], vec![], None)
+            .create_task("t", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 

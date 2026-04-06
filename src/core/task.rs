@@ -4,6 +4,8 @@ use crate::models::task::{ChecklistItem, Resource, Task, TaskMetadata};
 use crate::store::{StoreError, TaskStore};
 
 /// 初始化一个新任务并持久化。
+///
+/// 如果提供了 `project_ids`，任务创建后自动关联到指定项目。
 pub async fn initialize_task(
     store: &TaskStore,
     task_description: &str,
@@ -12,6 +14,7 @@ pub async fn initialize_task(
     notes: Vec<String>,
     resources: Vec<Resource>,
     metadata: Option<TaskMetadata>,
+    project_ids: Option<&[String]>,
 ) -> Result<Task, StoreError> {
     store
         .create_task(
@@ -21,6 +24,7 @@ pub async fn initialize_task(
             notes,
             resources,
             metadata,
+            project_ids,
         )
         .await
 }
@@ -177,6 +181,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -221,6 +226,7 @@ mod tests {
             vec!["笔记".to_owned()],
             vec![res],
             Some(meta),
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -243,6 +249,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -261,6 +268,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -274,7 +282,7 @@ mod tests {
     #[tokio::test]
     async fn update_task_description_success() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "旧描述", None, vec![], vec![], vec![], None)
+        let task = initialize_task(&store, "旧描述", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -302,7 +310,7 @@ mod tests {
     #[tokio::test]
     async fn update_context_success() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "任务", None, vec![], vec![], vec![], None)
+        let task = initialize_task(&store, "任务", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -329,7 +337,7 @@ mod tests {
     #[tokio::test]
     async fn update_metadata_success() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "任务", None, vec![], vec![], vec![], None)
+        let task = initialize_task(&store, "任务", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -366,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn clear_task_success() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "待删除", None, vec![], vec![], vec![], None)
+        let task = initialize_task(&store, "待删除", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -411,6 +419,7 @@ mod tests {
             vec![item_done, item_pending],
             vec![],
             vec![],
+            None,
             None,
         )
         .await
@@ -460,6 +469,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -491,6 +501,7 @@ mod tests {
             vec![],
             vec![],
             None,
+            None,
         )
         .await
         .expect("创建任务失败");
@@ -504,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn get_current_task_details_empty_checklist() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "空清单", None, vec![], vec![], vec![], None)
+        let task = initialize_task(&store, "空清单", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建任务失败");
 
@@ -535,7 +546,7 @@ mod tests {
     #[tokio::test]
     async fn list_tasks_summary_with_tasks() {
         let (store, _dir) = temp_store().await;
-        let t1 = initialize_task(&store, "任务A", None, vec![], vec![], vec![], None)
+        let t1 = initialize_task(&store, "任务A", None, vec![], vec![], vec![], None, None)
             .await
             .expect("创建失败");
         let summary = list_tasks_summary(&store).await.expect("列出失败");

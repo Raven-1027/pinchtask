@@ -6,6 +6,7 @@
 
 pub mod item;
 pub mod note;
+pub mod project;
 pub mod resource;
 pub mod task;
 
@@ -15,6 +16,11 @@ pub use item::{
     reorder_checklist_item, update_checklist_item,
 };
 pub use note::{add_note, delete_note};
+pub use project::{
+    add_task_to_project, create_project, delete_project, delete_project_with_tasks,
+    get_project, get_projects_for_task, get_tasks_for_project, list_projects,
+    remove_task_from_project, update_project,
+};
 pub use resource::{add_resource, delete_resource};
 pub use task::{
     clear_task, get_checklist_summary, get_current_task_details, initialize_task,
