@@ -142,9 +142,7 @@ async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
     let filtered: Vec<_> = if args.done {
         tasks
             .iter()
-            .filter(|t| {
-                !t.checklist.is_empty() && t.checklist.iter().all(|i| i.done)
-            })
+            .filter(|t| !t.checklist.is_empty() && t.checklist.iter().all(|i| i.done))
             .collect()
     } else if args.all {
         tasks.iter().collect()
@@ -160,8 +158,16 @@ async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
     match args.sort.as_str() {
         "priority" => {
             sorted.sort_by(|a, b| {
-                let pa = a.metadata.as_ref().and_then(|m| m.priority.as_deref()).unwrap_or("medium");
-                let pb = b.metadata.as_ref().and_then(|m| m.priority.as_deref()).unwrap_or("medium");
+                let pa = a
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.priority.as_deref())
+                    .unwrap_or("medium");
+                let pb = b
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.priority.as_deref())
+                    .unwrap_or("medium");
                 priority_order(pa).cmp(&priority_order(pb))
             });
         }
@@ -178,10 +184,18 @@ async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
     // 限制数量
     let limited: Vec<_> = sorted.into_iter().take(args.limit).collect();
 
-    let entries: Vec<output::TaskListEntry> =
-        limited.iter().map(|t| output::task_to_list_entry(t)).collect();
+    let entries: Vec<output::TaskListEntry> = limited
+        .iter()
+        .map(|t| output::task_to_list_entry(t))
+        .collect();
 
-    output::print(output::Output::TaskList { tasks: entries, long: args.long }, json);
+    output::print(
+        output::Output::TaskList {
+            tasks: entries,
+            long: args.long,
+        },
+        json,
+    );
     Ok(())
 }
 
@@ -205,7 +219,9 @@ async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<
         && args.tags.is_none()
         && args.eta.is_none()
     {
-        anyhow::bail!("至少需要指定一个可修改的字段 (--description / --context / --priority / --tags / --eta)");
+        anyhow::bail!(
+            "至少需要指定一个可修改的字段 (--description / --context / --priority / --tags / --eta)"
+        );
     }
 
     // 更新 description

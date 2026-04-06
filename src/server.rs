@@ -46,8 +46,8 @@ impl PinchTaskServer {
 
 /// 将 Task 序列化为 CallToolResult（成功）。
 fn task_to_result(task: &Task) -> CallToolResult {
-    let json = serde_json::to_string_pretty(task)
-        .unwrap_or_else(|e| format!("序列化任务失败: {e}"));
+    let json =
+        serde_json::to_string_pretty(task).unwrap_or_else(|e| format!("序列化任务失败: {e}"));
     text_result(json, false)
 }
 
@@ -66,7 +66,10 @@ fn text_result(text: String, is_error: bool) -> CallToolResult {
 /// 业务逻辑错误（StoreError）映射为 `is_error: true` 的工具错误结果，
 /// 与迁移前的行为保持一致。
 trait StoreResultExt<T> {
-    fn into_tool_result(self, ok_fn: impl FnOnce(T) -> CallToolResult) -> Result<CallToolResult, ErrorData>;
+    fn into_tool_result(
+        self,
+        ok_fn: impl FnOnce(T) -> CallToolResult,
+    ) -> Result<CallToolResult, ErrorData>;
 }
 
 impl<T> StoreResultExt<T> for Result<T, StoreError> {
@@ -123,7 +126,7 @@ impl PinchTaskServer {
             })
             .collect();
 
-        let resources= params
+        let resources = params
             .resources
             .unwrap_or_default()
             .into_iter()
@@ -231,8 +234,6 @@ impl PinchTaskServer {
         Ok(task_to_result(&task))
     }
 
-
-
     // ------------------------------------------------------------------
     // 5. manage_checklist_item
     // ------------------------------------------------------------------
@@ -251,7 +252,10 @@ impl PinchTaskServer {
                     ErrorData::invalid_params("task is required for add action", None)
                 })?;
                 let detailed_description = params.detailed_description.ok_or_else(|| {
-                    ErrorData::invalid_params("detailed_description is required for add action", None)
+                    ErrorData::invalid_params(
+                        "detailed_description is required for add action",
+                        None,
+                    )
                 })?;
                 let context_and_plan = params.context_and_plan.flatten();
                 core::add_checklist_item(
@@ -287,14 +291,9 @@ impl PinchTaskServer {
                 let to_index = params.to_index.ok_or_else(|| {
                     ErrorData::invalid_params("to_index is required for reorder action", None)
                 })? as usize;
-                core::reorder_checklist_item(
-                    &self.store,
-                    &params.task_id,
-                    from_index,
-                    to_index,
-                )
-                .await
-                .into_tool_result(|t| task_to_result(&t))
+                core::reorder_checklist_item(&self.store, &params.task_id, from_index, to_index)
+                    .await
+                    .into_tool_result(|t| task_to_result(&t))
             }
             Action::Remove => {
                 let index = params.index.ok_or_else(|| {
@@ -414,17 +413,13 @@ impl PinchTaskServer {
                 let name = params.name.ok_or_else(|| {
                     ErrorData::invalid_params("name is required for create action", None)
                 })?;
-                core::create_project(
-                    &self.store,
-                    &name,
-                    params.description.as_deref(),
-                )
-                .await
-                .into_tool_result(|p| {
-                    let json = serde_json::to_string_pretty(&p)
-                        .unwrap_or_else(|e| format!("序列化项目失败: {e}"));
-                    text_result(json, false)
-                })
+                core::create_project(&self.store, &name, params.description.as_deref())
+                    .await
+                    .into_tool_result(|p| {
+                        let json = serde_json::to_string_pretty(&p)
+                            .unwrap_or_else(|e| format!("序列化项目失败: {e}"));
+                        text_result(json, false)
+                    })
             }
             ProjectAction::Get => {
                 let project_id = params.project_id.ok_or_else(|| {

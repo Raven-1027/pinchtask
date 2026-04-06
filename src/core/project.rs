@@ -131,7 +131,9 @@ mod tests {
             .await
             .expect("创建项目失败");
 
-        let loaded = get_project(&store, &created.id).await.expect("获取项目失败");
+        let loaded = get_project(&store, &created.id)
+            .await
+            .expect("获取项目失败");
         assert_eq!(loaded.id, created.id);
         assert_eq!(loaded.name, "查询项目");
     }
@@ -261,7 +263,15 @@ mod tests {
             .await
             .expect("创建项目失败");
         let task = store
-            .create_task("级联任务", None, vec![], vec![], vec![], None, Some(&project.id))
+            .create_task(
+                "级联任务",
+                None,
+                vec![],
+                vec![],
+                vec![],
+                None,
+                Some(&project.id),
+            )
             .await
             .expect("创建任务失败");
         assert_eq!(task.project_id, Some(project.id.clone()));
@@ -284,7 +294,15 @@ mod tests {
             .await
             .expect("创建项目失败");
         let task = store
-            .create_task("将被删除的任务", None, vec![], vec![], vec![], None, Some(&project.id))
+            .create_task(
+                "将被删除的任务",
+                None,
+                vec![],
+                vec![],
+                vec![],
+                None,
+                Some(&project.id),
+            )
             .await
             .expect("创建任务失败");
 

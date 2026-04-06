@@ -107,7 +107,7 @@ impl<'a> Widget for TaskList<'a> {
             .saturating_sub(PRIORITY_WIDTH)
             .saturating_sub(TIME_WIDTH)
             .saturating_sub(4);
-        let desc_width = desc_width.max(8).min(DEFAULT_DESC_WIDTH * 2);
+        let desc_width = desc_width.clamp(8, DEFAULT_DESC_WIDTH * 2);
 
         let mut lines: Vec<Line> = Vec::with_capacity(visible_height);
 

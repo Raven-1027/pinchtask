@@ -104,14 +104,14 @@ impl<'a> Widget for TaskDetail<'a> {
             }
 
             // 标签
-            if let Some(ref tags) = meta.tags {
-                if !tags.is_empty() {
-                    let tags_str = tags.join(", ");
-                    lines.push(Line::from(vec![
-                        Span::styled(" 标签:   ", label_style()),
-                        Span::styled(tags_str, Style::default().fg(TAG)),
-                    ]));
-                }
+            if let Some(ref tags) = meta.tags
+                && !tags.is_empty()
+            {
+                let tags_str = tags.join(", ");
+                lines.push(Line::from(vec![
+                    Span::styled(" 标签:   ", label_style()),
+                    Span::styled(tags_str, Style::default().fg(TAG)),
+                ]));
             }
 
             // 预计完成时间
@@ -171,7 +171,7 @@ impl<'a> Widget for TaskDetail<'a> {
             let item_name_width = total_width
                 .saturating_sub(ITEM_PREFIX_WIDTH)
                 .saturating_sub(4);
-            let item_name_width = item_name_width.max(10).min(DEFAULT_ITEM_NAME_WIDTH * 2);
+            let item_name_width = item_name_width.clamp(10, DEFAULT_ITEM_NAME_WIDTH * 2);
 
             for (i, item) in visible_items {
                 let is_selected = i == self.selected_item_index;

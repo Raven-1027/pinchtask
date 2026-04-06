@@ -129,7 +129,14 @@ pub async fn run_item(command: &ItemCommands, store: &TaskStore, json: bool) -> 
 async fn run_new(args: &ItemNewArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.task_id, &tasks)?;
-    let task = core::add_checklist_item(store, &full_id, &args.title, &args.description, args.plan.as_deref()).await?;
+    let task = core::add_checklist_item(
+        store,
+        &full_id,
+        &args.title,
+        &args.description,
+        args.plan.as_deref(),
+    )
+    .await?;
     output::print(output::Output::Task(&task), json);
     Ok(())
 }
@@ -157,7 +164,8 @@ async fn run_edit(args: &ItemEditArgs, store: &TaskStore, json: bool) -> Result<
         args.description.as_deref(),
         plan_opt,
         done_flag,
-    ).await?;
+    )
+    .await?;
     output::print(output::Output::Task(&task), json);
     Ok(())
 }
@@ -169,7 +177,11 @@ async fn run_check(args: &CheckArgs, store: &TaskStore, json: bool) -> Result<()
 
     let task = store.get_task(&full_id).await?;
     if args.index >= task.checklist.len() {
-        anyhow::bail!("清单条目索引越界: {}（共 {} 项）", args.index, task.checklist.len());
+        anyhow::bail!(
+            "清单条目索引越界: {}（共 {} 项）",
+            args.index,
+            task.checklist.len()
+        );
     }
 
     let is_done = task.checklist[args.index].done;
@@ -204,7 +216,11 @@ async fn run_rm(args: &ItemRmArgs, store: &TaskStore, json: bool) -> Result<()> 
 
     let task = store.get_task(&full_id).await?;
     if args.index >= task.checklist.len() {
-        anyhow::bail!("清单条目索引越界: {}（共 {} 项）", args.index, task.checklist.len());
+        anyhow::bail!(
+            "清单条目索引越界: {}（共 {} 项）",
+            args.index,
+            task.checklist.len()
+        );
     }
     let item_title = task.checklist[args.index].task.clone();
 

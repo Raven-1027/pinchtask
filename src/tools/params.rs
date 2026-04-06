@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use schemars::generate::SchemaSettings;
 use schemars::JsonSchema;
 use schemars::Schema;
+use schemars::generate::SchemaSettings;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -15,8 +15,7 @@ use serde::Deserialize;
 // ---------------------------------------------------------------------------
 
 /// 初始化任务时的清单条目输入。
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
 pub struct InitialChecklistItem {
     #[schemars(description = "Short name for the checklist item")]
     pub task: String,
@@ -33,7 +32,6 @@ pub struct InitialChecklistItem {
     pub id: Option<String>,
 }
 
-
 /// 资源引用输入。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ResourceInput {
@@ -47,8 +45,7 @@ pub struct ResourceInput {
 }
 
 /// 任务元数据输入。
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
 pub struct TaskMetadataInput {
     #[serde(default)]
     #[schemars(description = "Tag list")]
@@ -60,7 +57,6 @@ pub struct TaskMetadataInput {
     #[schemars(description = "Estimated completion time (ISO timestamp or duration)")]
     pub estimated_completion_time: Option<String>,
 }
-
 
 // ---------------------------------------------------------------------------
 // 工具参数结构体（按 server.rs 中 register_builtin_tools 的顺序）
@@ -289,7 +285,9 @@ pub struct ManageProjectParams {
 
     /// Whether to delete associated tasks when deleting a project (only for Delete).
     #[serde(default)]
-    #[schemars(description = "Whether to delete associated tasks when deleting a project (only for Delete)")]
+    #[schemars(
+        description = "Whether to delete associated tasks when deleting a project (only for Delete)"
+    )]
     pub delete_tasks: Option<bool>,
 }
 
@@ -355,28 +353,28 @@ fn resolve_refs(schema: &mut serde_json::Value) {
     match schema {
         serde_json::Value::Object(map) => {
             // 模式 1: 纯 $ref → 查找并内联
-            if map.len() == 1 {
-                if let Some(serde_json::Value::String(ref_uri)) = map.get("$ref") {
-                    let def_name = extract_def_name(ref_uri);
-                    if let Some(inline) =
-                        find_definition(&serde_json::Value::Object(map.clone()), &def_name)
-                    {
-                        *schema = inline;
-                        // 内联后继续处理（可能还有嵌套 $ref）
-                        resolve_refs(schema);
-                        return;
-                    }
+            if map.len() == 1
+                && let Some(serde_json::Value::String(ref_uri)) = map.get("$ref")
+            {
+                let def_name = extract_def_name(ref_uri);
+                if let Some(inline) =
+                    find_definition(&serde_json::Value::Object(map.clone()), &def_name)
+                {
+                    *schema = inline;
+                    // 内联后继续处理（可能还有嵌套 $ref）
+                    resolve_refs(schema);
+                    return;
                 }
             }
 
             // 模式 2: 单元素 allOf → 展开
-            if let Some(serde_json::Value::Array(arr)) = map.get("allOf") {
-                if arr.len() == 1 {
-                    let inner = arr[0].clone();
-                    *schema = inner;
-                    resolve_refs(schema);
-                    return;
-                }
+            if let Some(serde_json::Value::Array(arr)) = map.get("allOf")
+                && arr.len() == 1
+            {
+                let inner = arr[0].clone();
+                *schema = inner;
+                resolve_refs(schema);
+                return;
             }
 
             // 递归处理对象中所有值
@@ -411,11 +409,13 @@ fn extract_def_name(ref_uri: &str) -> String {
 /// 此函数仅作为安全网。
 fn find_definition(schema: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
     if let Some(obj) = schema.as_object() {
+        #[allow(clippy::collapsible_if)]
         if let Some(serde_json::Value::Object(defs)) = obj.get("$defs") {
             if let Some(def) = defs.get(name) {
                 return Some(def.clone());
             }
         }
+        #[allow(clippy::collapsible_if)]
         if let Some(serde_json::Value::Object(defs)) = obj.get("definitions") {
             if let Some(def) = defs.get(name) {
                 return Some(def.clone());

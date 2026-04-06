@@ -73,14 +73,10 @@ impl TaskStore {
             .await?;
 
         // 执行建表迁移
-        sqlx::query(MIGRATION_SQL)
-            .execute(&pool)
-            .await?;
+        sqlx::query(MIGRATION_SQL).execute(&pool).await?;
 
         // 执行项目管理迁移
-        sqlx::query(PROJECT_MIGRATION_SQL)
-            .execute(&pool)
-            .await?;
+        sqlx::query(PROJECT_MIGRATION_SQL).execute(&pool).await?;
 
         // 执行项目关系重构迁移（多对多改一对多）
         // ALTER TABLE ADD COLUMN 不支持 IF NOT EXISTS，需单独处理
@@ -233,9 +229,7 @@ impl TaskStore {
         let checklist = self.load_checklist_items(id).await?;
         let notes = self.load_notes(id).await?;
         let resources = self.load_resources(id).await?;
-        let metadata = row
-            .metadata
-            .and_then(|s| serde_json::from_str(&s).ok());
+        let metadata = row.metadata.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Task {
             id: row.id,
@@ -373,9 +367,7 @@ impl TaskStore {
             let checklist = self.load_checklist_items(&row.id).await?;
             let notes = self.load_notes(&row.id).await?;
             let resources = self.load_resources(&row.id).await?;
-            let metadata = row
-                .metadata
-                .and_then(|s| serde_json::from_str(&s).ok());
+            let metadata = row.metadata.and_then(|s| serde_json::from_str(&s).ok());
             tasks.push(Task {
                 id: row.id,
                 task_description: row.task_description,
@@ -507,10 +499,7 @@ impl TaskStore {
     // ------------------------------------------------------------------
 
     /// 获取指定项目关联的所有任务（通过 tasks.project_id 查询）。
-    pub async fn get_tasks_for_project(
-        &self,
-        project_id: &str,
-    ) -> Result<Vec<Task>, StoreError> {
+    pub async fn get_tasks_for_project(&self, project_id: &str) -> Result<Vec<Task>, StoreError> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, task_description, context_for_all_tasks, metadata, project_id, created_at, updated_at
              FROM tasks
@@ -545,10 +534,7 @@ impl TaskStore {
     }
 
     /// 获取指定任务所属的项目（通过 task.project_id 查询）。
-    pub async fn get_project_for_task(
-        &self,
-        task_id: &str,
-    ) -> Result<Option<Project>, StoreError> {
+    pub async fn get_project_for_task(&self, task_id: &str) -> Result<Option<Project>, StoreError> {
         let task = self.get_task(task_id).await?;
         match task.project_id {
             Some(pid) => Ok(Some(self.get_project(&pid).await?)),
@@ -588,12 +574,10 @@ impl TaskStore {
         }
 
         // 获取所有关联任务 ID（通过 tasks.project_id）
-        let task_ids: Vec<(String,)> = sqlx::query_as(
-            "SELECT id FROM tasks WHERE project_id = ?",
-        )
-        .bind(id)
-        .fetch_all(&self.pool)
-        .await?;
+        let task_ids: Vec<(String,)> = sqlx::query_as("SELECT id FROM tasks WHERE project_id = ?")
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
 
         // 逐个删除任务
         for (task_id,) in task_ids {
@@ -624,12 +608,11 @@ impl TaskStore {
 
     /// 加载指定任务的所有笔记（按 sort_order 排序）。
     async fn load_notes(&self, task_id: &str) -> Result<Vec<String>, StoreError> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT content FROM notes WHERE task_id = ? ORDER BY sort_order ASC",
-        )
-        .bind(task_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT content FROM notes WHERE task_id = ? ORDER BY sort_order ASC")
+                .bind(task_id)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
@@ -762,8 +745,9 @@ mod tests {
     /// 辅助：创建一个使用临时目录的异步 TaskStore。
     async fn temp_store() -> (TaskStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
-        let store =
-            TaskStore::new(Some(dir.path().to_path_buf())).await.expect("创建 TaskStore 失败");
+        let store = TaskStore::new(Some(dir.path().to_path_buf()))
+            .await
+            .expect("创建 TaskStore 失败");
         (store, dir)
     }
 
@@ -795,16 +779,11 @@ mod tests {
         // 从数据库重新读取
         let loaded = store.get_task(&created.id).await.expect("获取任务失败");
         assert_eq!(loaded.task_description, "整体任务描述");
-        assert_eq!(
-            loaded.context_for_all_tasks,
-            Some("共享上下文".to_owned())
-        );
+        assert_eq!(loaded.context_for_all_tasks, Some("共享上下文".to_owned()));
         assert_eq!(loaded.checklist.len(), 1);
         assert_eq!(loaded.notes, vec!["笔记1"]);
         assert!(loaded.project_id.is_none());
-        assert!(
-            loaded.created_at.ends_with("+00:00") || loaded.created_at.len() > 10
-        );
+        assert!(loaded.created_at.ends_with("+00:00") || loaded.created_at.len() > 10);
     }
 
     #[tokio::test]
@@ -892,8 +871,9 @@ mod tests {
     #[tokio::test]
     async fn round_trip_preserves_data() {
         let dir = tempfile::tempdir().expect("创建临时目录失败");
-        let store1 =
-            TaskStore::new(Some(dir.path().to_path_buf())).await.expect("创建 TaskStore 失败");
+        let store1 = TaskStore::new(Some(dir.path().to_path_buf()))
+            .await
+            .expect("创建 TaskStore 失败");
 
         let item = ChecklistItem {
             id: Uuid::new_v4().to_string(),
@@ -927,31 +907,23 @@ mod tests {
             .expect("创建任务失败");
 
         // 用全新的 TaskStore 实例从同一数据库加载
-        let store2 =
-            TaskStore::new(Some(dir.path().to_path_buf())).await.expect("创建 TaskStore 失败");
-        let loaded = store2
-            .get_task(&created.id)
+        let store2 = TaskStore::new(Some(dir.path().to_path_buf()))
             .await
-            .expect("获取任务失败");
+            .expect("创建 TaskStore 失败");
+        let loaded = store2.get_task(&created.id).await.expect("获取任务失败");
 
         assert_eq!(loaded.id, created.id);
         assert_eq!(loaded.task_description, "往返测试任务");
-        assert_eq!(
-            loaded.context_for_all_tasks,
-            Some("共享上下文".to_owned())
-        );
+        assert_eq!(loaded.context_for_all_tasks, Some("共享上下文".to_owned()));
         assert_eq!(loaded.checklist.len(), 1);
         assert_eq!(loaded.checklist[0].task, "子任务");
-        assert_eq!(loaded.checklist[0].done, true);
+        assert!(loaded.checklist[0].done);
         assert_eq!(loaded.notes, vec!["笔记A", "笔记B"]);
         assert_eq!(loaded.resources.len(), 1);
         assert_eq!(loaded.resources[0].name, "docs");
         assert!(loaded.metadata.is_some());
         let m = loaded.metadata.unwrap();
-        assert_eq!(
-            m.tags,
-            Some(vec!["rust".to_owned(), "test".to_owned()])
-        );
+        assert_eq!(m.tags, Some(vec!["rust".to_owned(), "test".to_owned()]));
         assert_eq!(m.priority, Some("high".to_owned()));
     }
 
@@ -1023,12 +995,11 @@ mod tests {
                 .expect("查询 checklist_items 失败");
         assert!(checklist.is_empty());
 
-        let notes: Vec<(String,)> =
-            sqlx::query_as("SELECT content FROM notes WHERE task_id = ?")
-                .bind(&task.id)
-                .fetch_all(&store.pool)
-                .await
-                .expect("查询 notes 失败");
+        let notes: Vec<(String,)> = sqlx::query_as("SELECT content FROM notes WHERE task_id = ?")
+            .bind(&task.id)
+            .fetch_all(&store.pool)
+            .await
+            .expect("查询 notes 失败");
         assert!(notes.is_empty());
 
         let resources: Vec<(String,)> =

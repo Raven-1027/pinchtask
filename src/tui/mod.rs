@@ -13,10 +13,10 @@ use anyhow::Result;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::prelude::CrosstermBackend;
 
 use app::App;
 use event::EventBus;
@@ -45,11 +45,7 @@ fn install_panic_hook() {
     std::panic::set_hook(Box::new(|panic_info| {
         // 尝试恢复终端——如果失败则忽略（已经在 panic 中）
         let _ = disable_raw_mode();
-        let _ = execute!(
-            io::stdout(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        );
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
 
         // 输出 panic 信息到 stderr（原始 hook 的简化版本）
         eprintln!("\npinchtask TUI 发生 panic:\n{panic_info}");
