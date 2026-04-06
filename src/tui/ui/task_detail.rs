@@ -104,14 +104,14 @@ impl<'a> Widget for TaskDetail<'a> {
             }
 
             // 标签
-            if let Some(ref tags) = meta.tags {
-                if !tags.is_empty() {
-                    let tags_str = tags.join(", ");
-                    lines.push(Line::from(vec![
-                        Span::styled(" 标签:   ", label_style()),
-                        Span::styled(tags_str, Style::default().fg(TAG)),
-                    ]));
-                }
+            if let Some(ref tags) = meta.tags
+                && !tags.is_empty()
+            {
+                let tags_str = tags.join(", ");
+                lines.push(Line::from(vec![
+                    Span::styled(" 标签:   ", label_style()),
+                    Span::styled(tags_str, Style::default().fg(TAG)),
+                ]));
             }
 
             // 预计完成时间

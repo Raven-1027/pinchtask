@@ -3,8 +3,8 @@
 //! 测试 PinchTaskServer 的 ServerHandler 实现、工具注册、以及端到端工具调用。
 //! 核心业务逻辑的详细测试见 src/tools/task.rs 中的单元测试。
 
-use rmcp::handler::server::wrapper::Parameters;
 use rmcp::ServerHandler;
+use rmcp::handler::server::wrapper::Parameters;
 use tempfile::TempDir;
 
 use pinchtask::server::PinchTaskServer;

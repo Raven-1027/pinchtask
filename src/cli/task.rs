@@ -219,7 +219,9 @@ async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<
         && args.tags.is_none()
         && args.eta.is_none()
     {
-        anyhow::bail!("至少需要指定一个可修改的字段 (--description / --context / --priority / --tags / --eta)");
+        anyhow::bail!(
+            "至少需要指定一个可修改的字段 (--description / --context / --priority / --tags / --eta)"
+        );
     }
 
     // 更新 description

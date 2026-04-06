@@ -220,10 +220,10 @@ fn print_task_detail(task: &Task) {
 
     // 元数据
     if let Some(ref meta) = task.metadata {
-        if let Some(ref tags) = meta.tags {
-            if !tags.is_empty() {
-                println!("标签: {}", tags.join(", "));
-            }
+        if let Some(ref tags) = meta.tags
+            && !tags.is_empty()
+        {
+            println!("标签: {}", tags.join(", "));
         }
         if let Some(ref priority) = meta.priority {
             println!("优先级: {priority}");

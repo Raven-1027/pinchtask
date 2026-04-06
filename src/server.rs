@@ -6,10 +6,11 @@
 use std::sync::Arc;
 
 use rmcp::{
+    ErrorData, ServerHandler,
     handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router, ErrorData, ServerHandler,
+    tool, tool_handler, tool_router,
 };
 use uuid::Uuid;
 

@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use schemars::generate::SchemaSettings;
 use schemars::JsonSchema;
 use schemars::Schema;
+use schemars::generate::SchemaSettings;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -353,28 +353,28 @@ fn resolve_refs(schema: &mut serde_json::Value) {
     match schema {
         serde_json::Value::Object(map) => {
             // 模式 1: 纯 $ref → 查找并内联
-            if map.len() == 1 {
-                if let Some(serde_json::Value::String(ref_uri)) = map.get("$ref") {
-                    let def_name = extract_def_name(ref_uri);
-                    if let Some(inline) =
-                        find_definition(&serde_json::Value::Object(map.clone()), &def_name)
-                    {
-                        *schema = inline;
-                        // 内联后继续处理（可能还有嵌套 $ref）
-                        resolve_refs(schema);
-                        return;
-                    }
+            if map.len() == 1
+                && let Some(serde_json::Value::String(ref_uri)) = map.get("$ref")
+            {
+                let def_name = extract_def_name(ref_uri);
+                if let Some(inline) =
+                    find_definition(&serde_json::Value::Object(map.clone()), &def_name)
+                {
+                    *schema = inline;
+                    // 内联后继续处理（可能还有嵌套 $ref）
+                    resolve_refs(schema);
+                    return;
                 }
             }
 
             // 模式 2: 单元素 allOf → 展开
-            if let Some(serde_json::Value::Array(arr)) = map.get("allOf") {
-                if arr.len() == 1 {
-                    let inner = arr[0].clone();
-                    *schema = inner;
-                    resolve_refs(schema);
-                    return;
-                }
+            if let Some(serde_json::Value::Array(arr)) = map.get("allOf")
+                && arr.len() == 1
+            {
+                let inner = arr[0].clone();
+                *schema = inner;
+                resolve_refs(schema);
+                return;
             }
 
             // 递归处理对象中所有值
@@ -409,11 +409,13 @@ fn extract_def_name(ref_uri: &str) -> String {
 /// 此函数仅作为安全网。
 fn find_definition(schema: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
     if let Some(obj) = schema.as_object() {
+        #[allow(clippy::collapsible_if)]
         if let Some(serde_json::Value::Object(defs)) = obj.get("$defs") {
             if let Some(def) = defs.get(name) {
                 return Some(def.clone());
             }
         }
+        #[allow(clippy::collapsible_if)]
         if let Some(serde_json::Value::Object(defs)) = obj.get("definitions") {
             if let Some(def) = defs.get(name) {
                 return Some(def.clone());

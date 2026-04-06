@@ -4,11 +4,11 @@
 //! 采用左右分栏布局：左栏项目列表（30%），右栏任务列表/详情/表单（70%）。
 //! 覆盖层（对话框、表单）渲染在分栏之上。
 
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use ratatui::Frame;
 
 use super::app::{App, FocusedPane, FormField, FormMode, InputMode, Overlay, RightPaneView};
 
@@ -123,14 +123,14 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
             format!("{}│", app.search_query().unwrap_or("")),
             Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
         ));
-    } else if let Some(query) = app.search_query() {
-        if !query.is_empty() {
-            spans.push(Span::raw("  "));
-            spans.push(Span::styled(
-                format!("过滤: {query}"),
-                Style::default().fg(Color::Green),
-            ));
-        }
+    } else if let Some(query) = app.search_query()
+        && !query.is_empty()
+    {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("过滤: {query}"),
+            Style::default().fg(Color::Green),
+        ));
     }
 
     // 排序方式（仅在右栏任务列表且非搜索模式时显示）

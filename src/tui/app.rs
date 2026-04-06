@@ -852,14 +852,14 @@ impl App {
         let mut result: Vec<&Task> = self.project_tasks.iter().collect();
 
         // 搜索过滤
-        if let Some(query) = &self.search_query {
-            if !query.is_empty() {
-                let query_lower = query.to_lowercase();
-                result.retain(|task| {
-                    task.task_description.to_lowercase().contains(&query_lower)
-                        || task.id.to_lowercase().contains(&query_lower)
-                });
-            }
+        if let Some(query) = &self.search_query
+            && !query.is_empty()
+        {
+            let query_lower = query.to_lowercase();
+            result.retain(|task| {
+                task.task_description.to_lowercase().contains(&query_lower)
+                    || task.id.to_lowercase().contains(&query_lower)
+            });
         }
 
         // 排序
@@ -1625,7 +1625,9 @@ impl App {
                 }
             }
             // Space/x 切换完成状态
-            KeyCode::Char(' ') | KeyCode::Char('x') => {
+            KeyCode::Char(' ') | KeyCode::Char('x') =>
+            {
+                #[allow(clippy::collapsible_if)]
                 if let Some(task) = &self.current_task {
                     if let Some(item) = task.checklist.get(self.selected_item_index) {
                         let task_id = task.id.clone();
@@ -1649,7 +1651,9 @@ impl App {
                 }
             }
             // e 键编辑当前条目名称
-            KeyCode::Char('e') => {
+            KeyCode::Char('e') =>
+            {
+                #[allow(clippy::collapsible_if)]
                 if let Some(task) = &self.current_task {
                     if let Some(item) = task.checklist.get(self.selected_item_index) {
                         self.overlay = Overlay::Input(InputMode::EditingItemName);
@@ -1660,18 +1664,18 @@ impl App {
             }
             // d 键删除当前条目
             KeyCode::Char('d') => {
-                if let Some(task) = &self.current_task {
-                    if !task.checklist.is_empty() {
-                        let task_id = task.id.clone();
-                        let idx = self.selected_item_index;
-                        let new_count = task.checklist.len().saturating_sub(1);
-                        self.spawn_remove_item(task_id, idx);
-                        // 调整索引
-                        if new_count > 0 && self.selected_item_index >= new_count {
-                            self.selected_item_index = new_count - 1;
-                        } else if new_count == 0 {
-                            self.selected_item_index = 0;
-                        }
+                if let Some(task) = &self.current_task
+                    && !task.checklist.is_empty()
+                {
+                    let task_id = task.id.clone();
+                    let idx = self.selected_item_index;
+                    let new_count = task.checklist.len().saturating_sub(1);
+                    self.spawn_remove_item(task_id, idx);
+                    // 调整索引
+                    if new_count > 0 && self.selected_item_index >= new_count {
+                        self.selected_item_index = new_count - 1;
+                    } else if new_count == 0 {
+                        self.selected_item_index = 0;
                     }
                 }
             }
@@ -1683,11 +1687,11 @@ impl App {
             }
             // D 键（Shift+d）删除笔记（确认提示）
             KeyCode::Char('D') => {
-                if let Some(task) = &self.current_task {
-                    if !task.notes.is_empty() {
-                        self.selected_note_index = 0;
-                        self.overlay = Overlay::DeleteNote;
-                    }
+                if let Some(task) = &self.current_task
+                    && !task.notes.is_empty()
+                {
+                    self.selected_note_index = 0;
+                    self.overlay = Overlay::DeleteNote;
                 }
             }
             // L 键添加资源链接（两步输入：名称 → URL）
@@ -2010,11 +2014,7 @@ impl App {
                 let current = form.priority.trim().to_lowercase();
                 let idx = OPTIONS.iter().position(|&o| o == current).unwrap_or(0);
                 let new_idx = if key.code == KeyCode::Left {
-                    if idx == 0 {
-                        OPTIONS.len() - 1
-                    } else {
-                        idx - 1
-                    }
+                    if idx == 0 { OPTIONS.len() - 1 } else { idx - 1 }
                 } else {
                     (idx + 1) % OPTIONS.len()
                 };
