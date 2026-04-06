@@ -96,7 +96,7 @@ pinchtask [OPTIONS] [COMMAND]
   completion  生成 shell 补全脚本
 ```
 
-> 完整命令参数说明请参考 [CLI 参考文档](docs/cli-reference.md).
+> 完整命令参数说明请参考 [CLI 参考文档](docs/zh/cli.md).
 
 ## MCP 配置
 
@@ -116,24 +116,7 @@ pinchtask [OPTIONS] [COMMAND]
 }
 ```
 
-或直接使用 `pinchtask`(无子命令时默认启动服务器模式):
-
-```json
-{
-  "mcpServers": {
-    "pinchtask": {
-      "command": "pinchtask"
-    }
-  }
-}
-```
-
-服务器通过 **stdio** 传输协议与客户端通信，支持:
-
-- 换行分隔 JSON 格式
-- `Content-Length` 头格式
-
-协议版本：`2024-11-05`
+> 完整 MCP 工具说明请参考 [MCP 协议文档](docs/zh/mcp.md).
 
 ## TUI 交互式界面
 
@@ -147,53 +130,7 @@ pinchtask tui
 pinchtask tui -D /path/to/data
 ```
 
-### 视图说明
-
-| 视图 | 说明 |
-|------|------|
-| 任务列表 | 显示所有任务，支持搜索和排序 |
-| 任务详情 | 查看清单条目、笔记、资源等完整信息 |
-| 任务表单 | 创建/编辑任务（Tab 切换字段，Enter 提交） |
-| 帮助面板 | 显示所有快捷键 |
-
-### 任务列表快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `j` / `↓` | 下移 |
-| `k` / `↑` | 上移 |
-| `Enter` | 查看任务详情 |
-| `n` | 新建任务 |
-| `d` | 删除任务（需确认） |
-| `Tab` | 切换排序方式 |
-| `/` | 进入搜索模式 |
-| `r` / `Ctrl+R` | 刷新列表 |
-| `Home` / `End` | 跳到列表首/末 |
-| `?` | 显示帮助 |
-| `q` | 退出 |
-
-### 任务详情快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `j` / `k` / `↑` / `↓` | 移动焦点 |
-| `Space` / `x` | 切换条目完成状态 |
-| `a` | 添加清单条目 |
-| `e` | 编辑条目名称 |
-| `d` | 删除当前条目 |
-| `Ctrl+J` / `Ctrl+K` | 下移/上移条目顺序 |
-| `N` (Shift+n) | 添加笔记 |
-| `D` (Shift+d) | 删除笔记 |
-| `L` (Shift+l) | 添加资源链接 |
-| `E` (Shift+e) | 编辑任务 |
-| `Esc` | 返回列表 |
-
-### 全局快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl+C` | 强制退出 |
-| `Esc` | 取消/返回上一视图 |
+> 完整快捷键与视图说明请参考 [TUI 使用文档](docs/zh/tui.md).
 
 ## 数据存储
 
@@ -208,72 +145,12 @@ pinchtask tui -D /path/to/data
 
 ## 开发指南
 
-### 项目结构
-
-```
-src/
-├── main.rs           # CLI 入口（错误处理、退出码）
-├── lib.rs            # 库入口
-├── server.rs         # MCP 服务器（请求分发、工具注册）
-├── store.rs          # SQLite 持久化层（sqlx 异步驱动）
-├── core/             # 纯业务逻辑层（CLI、TUI 和 MCP 共享）
-│   ├── mod.rs        #   模块入口与公共接口
-│   ├── task.rs       #   任务级操作
-│   ├── item.rs       #   清单条目操作
-│   ├── note.rs       #   笔记操作
-│   ├── project.rs    #   项目级操作（CRUD + 任务关联）
-│   └── resource.rs   #   资源操作
-├── models/           # 数据模型
-│   ├── mod.rs        #   模块入口
-│   ├── task.rs       #   Task, ChecklistItem, Resource, TaskMetadata
-│   └── project.rs    #   Project
-├── protocol/         # MCP JSON-RPC 协议类型
-│   └── types.rs      #   Request/Response/ToolDefinition 等
-├── transport/        # stdio 传输层
-│   └── mod.rs        #   换行分隔 JSON + Content-Length 双格式支持
-├── tools/            # MCP 工具适配层
-│   ├── mod.rs        #   模块入口
-│   ├── params.rs     #   工具参数结构体 + json_schema_for() 内联 $ref
-│   └── task.rs       #   core 层单元测试
-├── tui/              # 交互式终端界面（可选 feature）
-│   ├── mod.rs        #   TUI 入口（终端初始化、主循环）
-│   ├── app.rs        #   应用状态管理、事件处理
-│   ├── event.rs      #   事件定义与异步事件总线
-│   └── ui/           #   渲染模块
-│       ├── mod.rs           #     主渲染入口（左右分栏布局）
-│       ├── task_detail.rs   #     任务详情渲染
-│       ├── task_list.rs     #     任务列表渲染
-│       ├── project_form.rs  #     项目创建/编辑表单
-│       ├── project_list.rs  #     项目列表渲染
-│       └── theme.rs         #     视觉主题（配色、图标、进度条）
-└── cli/              # CLI 命令处理
-    ├── mod.rs        #   顶层参数解析与嵌套子命令分发
-    ├── task.rs       #   task new / ls / show / edit / rm
-    ├── item.rs       #   item add / check / mv / summary / edit / rm
-    ├── note.rs       #   note add / rm
-    ├── link.rs       #   link add / rm
-    ├── project.rs    #   project new / ls / show / edit / rm / add-task / rm-task
-    ├── output.rs     #   统一输出格式化
-    ├── resolve.rs    #   短 ID 前缀匹配
-    ├── logging.rs    #   日志初始化
-    └── server.rs     #   serve 子命令
-```
-
 ### 构建 & 测试
 
 ```bash
 cargo build
 cargo test                # 运行全部单元测试
 cargo test -- --nocapture # 显示 println! 输出
-```
-
-### 架构概览
-
-```
-用户 → CLI (clap) ──┐
-                     ├──→ core (纯逻辑) ──→ store (SQLite + sqlx)
-AI Agent → MCP ──────┘
-用户 → TUI ──────────┘
 ```
 
 所有业务逻辑集中在 `core/` 层，CLI, TUI 和 MCP 工具分别作为适配层调用 core 函数, 保证行为一致性.
