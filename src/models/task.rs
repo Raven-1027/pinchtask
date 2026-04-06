@@ -61,6 +61,8 @@ pub struct Task {
     pub resources: Vec<Resource>,
     /// 任务元数据（可选）。
     pub metadata: Option<TaskMetadata>,
+    /// 所属项目 ID（可选，一对多外键）。
+    pub project_id: Option<String>,
     /// 创建时间（ISO 8601）。
     pub created_at: String,
     /// 最后更新时间（ISO 8601）。

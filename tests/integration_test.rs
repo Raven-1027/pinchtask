@@ -65,7 +65,7 @@ async fn test_all_9_tools_registered() {
         "get_checklist_summary",
         "clear_task",
         "list_tasks",
-        "get_current_task_details",
+        "manage_project",
     ];
 
     for name in &expected_tools {
@@ -131,6 +131,7 @@ async fn test_initialize_task_creates_task() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .expect("initialize_task 不应返回 ErrorData");
@@ -175,6 +176,7 @@ async fn test_initialize_task_with_checklist() {
             notes: Some(vec!["一条笔记".to_owned()]),
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .expect("initialize_task 不应返回 ErrorData");
@@ -204,6 +206,7 @@ async fn test_add_checklist_item_and_mark_done() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -261,6 +264,7 @@ async fn test_list_tasks_after_creating_two() {
                 notes: None,
                 resources: None,
                 metadata: None,
+            project_id: None,
             }))
             .await
             .unwrap();
@@ -305,6 +309,7 @@ async fn test_mark_done_and_get_summary() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -355,6 +360,7 @@ async fn test_add_note_and_resource() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -404,6 +410,7 @@ async fn test_update_task_unified() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -447,6 +454,7 @@ async fn test_update_task_with_no_fields_returns_error() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -482,6 +490,7 @@ async fn test_clear_task_deletes_task() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -548,6 +557,7 @@ async fn test_reorder_checklist_item() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -602,6 +612,7 @@ async fn test_remove_checklist_item() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -626,57 +637,6 @@ async fn test_remove_checklist_item() {
 }
 
 #[tokio::test]
-async fn test_get_current_task_details_no_tasks() {
-    let (server, _dir) = test_server().await;
-
-    let result = server
-        .get_current_task_details(Parameters(GetCurrentTaskDetailsParams {}))
-        .await
-        .unwrap();
-
-    assert_eq!(result.is_error, Some(true), "无任务时应返回错误");
-    let text = extract_text(&result).unwrap();
-    assert!(
-        text.contains("没有找到"),
-        "应提示没有找到未完成任务"
-    );
-}
-
-#[tokio::test]
-async fn test_get_current_task_details_with_uncompleted() {
-    let (server, _dir) = test_server().await;
-
-    // 创建一个有未完成子任务的任务
-    server
-        .new_task(Parameters(InitializeTaskParams {
-            task_description: "当前任务".to_owned(),
-            context_for_all_tasks: Some("共享上下文".to_owned()),
-            initial_checklist: Some(vec![InitialChecklistItem {
-                task: "待办".to_owned(),
-                detailed_description: "待办详情".to_owned(),
-                context_and_plan: None,
-                done: false,
-                id: None,
-            }]),
-            notes: None,
-            resources: None,
-            metadata: None,
-        }))
-        .await
-        .unwrap();
-
-    let result = server
-        .get_current_task_details(Parameters(GetCurrentTaskDetailsParams {}))
-        .await
-        .unwrap();
-
-    assert_eq!(result.is_error, Some(false));
-    let text = extract_text(&result).unwrap();
-    assert!(text.contains("当前任务"), "应包含任务描述");
-    assert!(text.contains("共享上下文"), "应包含上下文信息");
-}
-
-#[tokio::test]
 async fn test_update_metadata() {
     let (server, _dir) = test_server().await;
 
@@ -688,6 +648,7 @@ async fn test_update_metadata() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -730,6 +691,7 @@ async fn test_update_context_and_description() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -788,6 +750,7 @@ async fn test_mark_undone() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -829,6 +792,7 @@ async fn test_update_checklist_item_partial() {
             notes: None,
             resources: None,
             metadata: None,
+            project_id: None,
         }))
         .await
         .unwrap();

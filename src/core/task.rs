@@ -5,7 +5,7 @@ use crate::store::{StoreError, TaskStore};
 
 /// 初始化一个新任务并持久化。
 ///
-/// 如果提供了 `project_ids`，任务创建后自动关联到指定项目。
+/// 如果提供了 `project_id`，任务创建时直接关联到指定项目。
 pub async fn initialize_task(
     store: &TaskStore,
     task_description: &str,
@@ -14,7 +14,7 @@ pub async fn initialize_task(
     notes: Vec<String>,
     resources: Vec<Resource>,
     metadata: Option<TaskMetadata>,
-    project_ids: Option<&[String]>,
+    project_id: Option<&str>,
 ) -> Result<Task, StoreError> {
     store
         .create_task(
@@ -24,7 +24,7 @@ pub async fn initialize_task(
             notes,
             resources,
             metadata,
-            project_ids,
+            project_id,
         )
         .await
 }
@@ -84,51 +84,6 @@ pub async fn get_checklist_summary(
         summary.push_str(&format!("{status} [{i}] {}\n", item.task));
     }
     Ok(summary)
-}
-
-/// 获取指定任务的第一个未完成清单条目的详细信息。
-///
-/// 返回格式化的字符串，包含任务上下文和当前子任务的完整信息。
-/// 如果所有子任务均已完成或清单为空，返回提示信息。
-pub async fn get_current_task_details(
-    store: &TaskStore,
-    task_id: &str,
-) -> Result<String, StoreError> {
-    let task = store.get_task(task_id).await?;
-
-    let mut result = String::new();
-    result.push_str(&format!("任务: {}\n", task.task_description));
-    if let Some(ref ctx) = task.context_for_all_tasks {
-        result.push_str(&format!("共享上下文: {ctx}\n"));
-    }
-    result.push('\n');
-
-    // 查找第一个未完成的清单条目
-    match task.checklist.iter().enumerate().find(|(_, item)| !item.done) {
-        Some((index, item)) => {
-            result.push_str(&format!("当前子任务 (索引 {index}):\n"));
-            result.push_str(&format!("  名称: {}\n", item.task));
-            result.push_str(&format!("  详细描述: {}\n", item.detailed_description));
-            if let Some(ref plan) = item.context_and_plan {
-                result.push_str(&format!("  上下文与计划: {plan}\n"));
-            }
-            result.push_str(&format!(
-                "  状态: {}\n",
-                if item.done { "已完成" } else { "进行中" }
-            ));
-        }
-        None => {
-            let total = task.checklist.len();
-            let done = task.checklist.iter().filter(|i| i.done).count();
-            if total == 0 {
-                result.push_str("清单为空，尚无子任务。\n");
-            } else {
-                result.push_str(&format!("所有子任务均已完成 ({done}/{total})。\n"));
-            }
-        }
-    }
-
-    Ok(result)
 }
 
 /// 列出所有任务并生成文本摘要。
@@ -193,6 +148,7 @@ mod tests {
         assert!(task.notes.is_empty());
         assert!(task.resources.is_empty());
         assert!(task.metadata.is_none());
+        assert!(task.project_id.is_none());
         assert!(!task.created_at.is_empty());
         assert_eq!(task.created_at, task.updated_at);
     }
@@ -437,98 +393,6 @@ mod tests {
     async fn get_checklist_summary_nonexistent() {
         let (store, _dir) = temp_store().await;
         let result = get_checklist_summary(&store, "不存在的ID").await;
-        assert!(matches!(result, Err(StoreError::NotFound(_))));
-    }
-
-    // ------------------------------------------------------------------
-    // get_current_task_details
-    // ------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn get_current_task_details_first_uncompleted() {
-        let (store, _dir) = temp_store().await;
-        let item1 = ChecklistItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            task: "已完成".to_owned(),
-            detailed_description: "已经完成".to_owned(),
-            context_and_plan: None,
-            done: true,
-        };
-        let item2 = ChecklistItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            task: "进行中".to_owned(),
-            detailed_description: "正在进行".to_owned(),
-            context_and_plan: Some("计划详情".to_owned()),
-            done: false,
-        };
-        let task = initialize_task(
-            &store,
-            "详情任务",
-            Some("共享上下文"),
-            vec![item1, item2],
-            vec![],
-            vec![],
-            None,
-            None,
-        )
-        .await
-        .expect("创建任务失败");
-
-        let details = get_current_task_details(&store, &task.id)
-            .await
-            .expect("获取详情失败");
-        assert!(details.contains("共享上下文: 共享上下文"));
-        assert!(details.contains("当前子任务 (索引 1)"));
-        assert!(details.contains("进行中"));
-        assert!(details.contains("计划详情"));
-    }
-
-    #[tokio::test]
-    async fn get_current_task_details_all_completed() {
-        let (store, _dir) = temp_store().await;
-        let item = ChecklistItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            task: "已完成".to_owned(),
-            detailed_description: "".to_owned(),
-            context_and_plan: None,
-            done: true,
-        };
-        let task = initialize_task(
-            &store,
-            "全完成",
-            None,
-            vec![item],
-            vec![],
-            vec![],
-            None,
-            None,
-        )
-        .await
-        .expect("创建任务失败");
-
-        let details = get_current_task_details(&store, &task.id)
-            .await
-            .expect("获取详情失败");
-        assert!(details.contains("所有子任务均已完成 (1/1)"));
-    }
-
-    #[tokio::test]
-    async fn get_current_task_details_empty_checklist() {
-        let (store, _dir) = temp_store().await;
-        let task = initialize_task(&store, "空清单", None, vec![], vec![], vec![], None, None)
-            .await
-            .expect("创建任务失败");
-
-        let details = get_current_task_details(&store, &task.id)
-            .await
-            .expect("获取详情失败");
-        assert!(details.contains("清单为空"));
-    }
-
-    #[tokio::test]
-    async fn get_current_task_details_nonexistent() {
-        let (store, _dir) = temp_store().await;
-        let result = get_current_task_details(&store, "不存在的ID").await;
         assert!(matches!(result, Err(StoreError::NotFound(_))));
     }
 

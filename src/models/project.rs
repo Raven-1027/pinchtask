@@ -1,6 +1,6 @@
 //! 项目数据模型定义。
 //!
-//! Project 结构体对应 projects 表，与 Task 通过 task_projects 关联表实现多对多关系。
+//! Project 结构体对应 projects 表，与 Task 通过 tasks.project_id 外键实现一对多关系。
 
 use serde::{Deserialize, Serialize};
 

@@ -2339,11 +2339,10 @@ impl App {
                         return;
                     }
                 };
-                match crate::core::project::add_task_to_project(&store, &task_id, &project_id)
+                match crate::core::project::set_task_project(&store, &task_id, Some(&project_id))
                     .await
                 {
-                    Ok(()) => {
-                        // 刷新项目详情
+                    Ok(_) => {
                         let _ = tx.send(AppEvent::Action(Action::Error(
                             "任务已添加到项目".to_owned(),
                         )));
@@ -2360,7 +2359,7 @@ impl App {
 
     /// 异步从项目中移除任务。
     #[allow(dead_code)]
-    pub fn spawn_remove_task_from_project(&mut self, task_id: String, project_id: String) {
+    pub fn spawn_remove_task_from_project(&mut self, task_id: String, _project_id: String) {
         let data_dir = self.store_cloned();
         if let Some(tx) = self.action_tx.clone() {
             tokio::spawn(async move {
@@ -2373,10 +2372,10 @@ impl App {
                         return;
                     }
                 };
-                match crate::core::project::remove_task_from_project(&store, &task_id, &project_id)
+                match crate::core::project::set_task_project(&store, &task_id, None)
                     .await
                 {
-                    Ok(()) => {
+                    Ok(_) => {
                         let _ = tx.send(AppEvent::Action(Action::Error(
                             "任务已从项目中移除".to_owned(),
                         )));

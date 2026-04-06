@@ -29,11 +29,7 @@ pub struct ProjectDetail<'a> {
 
 impl<'a> ProjectDetail<'a> {
     /// 创建新的项目详情组件。
-    pub fn new(
-        project: &'a Project,
-        tasks: &'a [Task],
-        selected_task_index: usize,
-    ) -> Self {
+    pub fn new(project: &'a Project, tasks: &'a [Task], selected_task_index: usize) -> Self {
         Self {
             project,
             tasks,
@@ -53,9 +49,7 @@ impl<'a> Widget for ProjectDetail<'a> {
             Span::styled(" 📦 ", Style::default().fg(ACCENT)),
             Span::styled(
                 &self.project.name,
-                Style::default()
-                    .fg(ACCENT)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
         ]));
 
@@ -99,21 +93,17 @@ impl<'a> Widget for ProjectDetail<'a> {
         lines.push(Line::from(""));
 
         let task_count = self.tasks.len();
-        let mut title_spans = vec![
-            Span::styled(
-                format!(" ☑ 关联任务 ({task_count})"),
-                section_title_style(),
-            ),
-        ];
+        let title_spans = vec![Span::styled(
+            format!(" ☑ 关联任务 ({task_count})"),
+            section_title_style(),
+        )];
         lines.push(Line::from(title_spans));
         lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.tasks.is_empty() {
             lines.push(Line::styled(
                 "   （暂无关联任务）",
-                Style::default()
-                    .fg(MUTED)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
             ));
         } else {
             let task_name_width = total_width.saturating_sub(20).max(10);

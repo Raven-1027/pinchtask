@@ -17,12 +17,12 @@ pub use item::{
 };
 pub use note::{add_note, delete_note};
 pub use project::{
-    add_task_to_project, create_project, delete_project, delete_project_with_tasks,
-    get_project, get_projects_for_task, get_tasks_for_project, list_projects,
-    remove_task_from_project, update_project,
+    create_project, delete_project, delete_project_with_tasks, get_project,
+    get_project_for_task, get_tasks_for_project, list_projects, set_task_project,
+    update_project,
 };
 pub use resource::{add_resource, delete_resource};
 pub use task::{
-    clear_task, get_checklist_summary, get_current_task_details, initialize_task,
-    list_tasks_summary, update_context, update_metadata, update_task_description,
+    clear_task, get_checklist_summary, initialize_task, list_tasks_summary, update_context,
+    update_metadata, update_task_description,
 };

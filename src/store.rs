@@ -82,6 +82,40 @@ impl TaskStore {
             .execute(&pool)
             .await?;
 
+        // 执行项目关系重构迁移（多对多改一对多）
+        // ALTER TABLE ADD COLUMN 不支持 IF NOT EXISTS，需单独处理
+        match sqlx::query("ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL")
+            .execute(&pool)
+            .await
+        {
+            Ok(_) => {
+                // 首次运行：还需迁移旧数据
+                sqlx::query(
+                    "UPDATE tasks SET project_id = (
+                        SELECT tp.project_id FROM task_projects tp
+                        WHERE tp.task_id = tasks.id
+                        ORDER BY tp.project_id
+                        LIMIT 1
+                    ) WHERE EXISTS (
+                        SELECT 1 FROM task_projects tp WHERE tp.task_id = tasks.id
+                    )"
+                )
+                .execute(&pool)
+                .await?;
+            }
+            Err(e) if e.to_string().contains("duplicate column name") => {
+                // 列已存在，跳过
+            }
+            Err(e) => return Err(e.into()),
+        }
+        // 以下语句天然幂等
+        sqlx::query("DROP TABLE IF EXISTS task_projects")
+            .execute(&pool)
+            .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)")
+            .execute(&pool)
+            .await?;
+
         Ok(Self { pool })
     }
 
@@ -94,7 +128,7 @@ impl TaskStore {
     /// 使用事务同时写入 tasks 表和关联的 checklist_items/notes/resources 表。
     /// 自动生成 UUID v4、ISO 8601 时间戳。
     ///
-    /// 如果提供了 `project_ids`，任务创建后自动添加到指定项目。
+    /// 如果提供了 `project_id`，任务创建时直接关联到指定项目。
     pub async fn create_task(
         &self,
         task_description: &str,
@@ -103,7 +137,7 @@ impl TaskStore {
         notes: Vec<String>,
         resources: Vec<Resource>,
         metadata: Option<TaskMetadata>,
-        project_ids: Option<&[String]>,
+        project_id: Option<&str>,
     ) -> Result<Task, StoreError> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
@@ -113,15 +147,16 @@ impl TaskStore {
 
         let mut tx = self.pool.begin().await?;
 
-        // 插入主任务行
+        // 插入主任务行（含 project_id）
         sqlx::query(
-            "INSERT INTO tasks (id, task_description, context_for_all_tasks, metadata, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tasks (id, task_description, context_for_all_tasks, metadata, project_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(task_description)
         .bind(context_for_all_tasks)
         .bind(&metadata_json)
+        .bind(project_id)
         .bind(&now)
         .bind(&now)
         .execute(&mut *tx)
@@ -169,13 +204,6 @@ impl TaskStore {
 
         tx.commit().await?;
 
-        // 关联任务到指定项目
-        if let Some(pids) = project_ids {
-            for pid in pids {
-                self.add_task_to_project(&id, pid).await?;
-            }
-        }
-
         Ok(Task {
             id,
             task_description: task_description.to_owned(),
@@ -184,6 +212,7 @@ impl TaskStore {
             notes,
             resources,
             metadata,
+            project_id: project_id.map(|s| s.to_owned()),
             created_at: now.clone(),
             updated_at: now,
         })
@@ -192,7 +221,7 @@ impl TaskStore {
     /// 根据 ID 获取单个任务（含完整清单、笔记、资源）。
     pub async fn get_task(&self, id: &str) -> Result<Task, StoreError> {
         let row = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, task_description, context_for_all_tasks, metadata, created_at, updated_at
+            "SELECT id, task_description, context_for_all_tasks, metadata, project_id, created_at, updated_at
              FROM tasks WHERE id = ?",
         )
         .bind(id)
@@ -215,6 +244,7 @@ impl TaskStore {
             notes,
             resources,
             metadata,
+            project_id: row.project_id,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -246,12 +276,13 @@ impl TaskStore {
         // 更新主任务行
         sqlx::query(
             "UPDATE tasks
-             SET task_description = ?, context_for_all_tasks = ?, metadata = ?, updated_at = ?
+             SET task_description = ?, context_for_all_tasks = ?, metadata = ?, project_id = ?, updated_at = ?
              WHERE id = ?",
         )
         .bind(&task.task_description)
         .bind(&task.context_for_all_tasks)
         .bind(&metadata_json)
+        .bind(&task.project_id)
         .bind(&task.updated_at)
         .bind(&task.id)
         .execute(&mut *tx)
@@ -330,7 +361,7 @@ impl TaskStore {
     /// 按 `created_at` 升序排列返回，每个任务包含完整清单、笔记和资源。
     pub async fn list_tasks(&self) -> Result<Vec<Task>, StoreError> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, task_description, context_for_all_tasks, metadata, created_at, updated_at
+            "SELECT id, task_description, context_for_all_tasks, metadata, project_id, created_at, updated_at
              FROM tasks ORDER BY created_at ASC",
         )
         .fetch_all(&self.pool)
@@ -352,6 +383,7 @@ impl TaskStore {
                 notes,
                 resources,
                 metadata,
+                project_id: row.project_id,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
             });
@@ -470,97 +502,19 @@ impl TaskStore {
     }
 
     // ------------------------------------------------------------------
-    // 任务-项目关联 API
+    // 任务-项目关联 API（一对多：task.project_id → project.id）
     // ------------------------------------------------------------------
 
-    /// 将任务添加到指定项目。
-    pub async fn add_task_to_project(
-        &self,
-        task_id: &str,
-        project_id: &str,
-    ) -> Result<(), StoreError> {
-        // 验证任务存在
-        let task_exists = sqlx::query("SELECT 1 FROM tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .is_some();
-        if !task_exists {
-            return Err(StoreError::NotFound(task_id.to_owned()));
-        }
-
-        // 验证项目存在
-        let project_exists = sqlx::query("SELECT 1 FROM projects WHERE id = ?")
-            .bind(project_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .is_some();
-        if !project_exists {
-            return Err(StoreError::ProjectNotFound(project_id.to_owned()));
-        }
-
-        sqlx::query(
-            "INSERT INTO task_projects (task_id, project_id) VALUES (?, ?)",
-        )
-        .bind(task_id)
-        .bind(project_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// 将任务从指定项目中移除。
-    pub async fn remove_task_from_project(
-        &self,
-        task_id: &str,
-        project_id: &str,
-    ) -> Result<(), StoreError> {
-        let result = sqlx::query(
-            "DELETE FROM task_projects WHERE task_id = ? AND project_id = ?",
-        )
-        .bind(task_id)
-        .bind(project_id)
-        .execute(&self.pool)
-        .await?;
-        if result.rows_affected() == 0 {
-            return Err(StoreError::NotFound(format!(
-                "任务 {task_id} 与项目 {project_id} 之间不存在关联"
-            )));
-        }
-        Ok(())
-    }
-
-    /// 获取指定任务关联的所有项目。
-    pub async fn get_projects_for_task(
-        &self,
-        task_id: &str,
-    ) -> Result<Vec<Project>, StoreError> {
-        let rows = sqlx::query_as::<_, ProjectRow>(
-            "SELECT p.id, p.name, p.description, p.created_at, p.updated_at
-             FROM projects p
-             INNER JOIN task_projects tp ON p.id = tp.project_id
-             WHERE tp.task_id = ?
-             ORDER BY p.created_at ASC",
-        )
-        .bind(task_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows.into_iter().map(Into::into).collect())
-    }
-
-    /// 获取指定项目关联的所有任务。
+    /// 获取指定项目关联的所有任务（通过 tasks.project_id 查询）。
     pub async fn get_tasks_for_project(
         &self,
         project_id: &str,
     ) -> Result<Vec<Task>, StoreError> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT t.id, t.task_description, t.context_for_all_tasks, t.metadata, t.created_at, t.updated_at
-             FROM tasks t
-             INNER JOIN task_projects tp ON t.id = tp.task_id
-             WHERE tp.project_id = ?
-             ORDER BY t.created_at ASC",
+            "SELECT id, task_description, context_for_all_tasks, metadata, project_id, created_at, updated_at
+             FROM tasks
+             WHERE project_id = ?
+             ORDER BY created_at ASC",
         )
         .bind(project_id)
         .fetch_all(&self.pool)
@@ -580,6 +534,7 @@ impl TaskStore {
                 notes,
                 resources,
                 metadata,
+                project_id: row.project_id,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
             });
@@ -588,14 +543,38 @@ impl TaskStore {
         Ok(tasks)
     }
 
+    /// 获取指定任务所属的项目（通过 task.project_id 查询）。
+    pub async fn get_project_for_task(
+        &self,
+        task_id: &str,
+    ) -> Result<Option<Project>, StoreError> {
+        let task = self.get_task(task_id).await?;
+        match task.project_id {
+            Some(pid) => Ok(Some(self.get_project(&pid).await?)),
+            None => Ok(None),
+        }
+    }
+
+    /// 设置任务的所属项目。
+    pub async fn set_task_project(
+        &self,
+        task_id: &str,
+        project_id: Option<&str>,
+    ) -> Result<Task, StoreError> {
+        let mut task = self.get_task(task_id).await?;
+        task.project_id = project_id.map(|s| s.to_owned());
+        self.update_task(&mut task).await?;
+        Ok(task)
+    }
+
     // ------------------------------------------------------------------
     // 智能删除
     // ------------------------------------------------------------------
 
     /// 删除项目及其所有关联任务。
     ///
-    /// 先获取项目关联的所有任务 ID 并逐个删除，然后删除项目本身。
-    /// task_projects 关联行通过 CASCADE 自动清理。
+    /// 先获取 project_id 匹配的所有任务并逐个删除，然后删除项目本身。
+    /// 任务删除时其关联行通过 CASCADE 自动清理。
     pub async fn delete_project_with_tasks(&self, id: &str) -> Result<(), StoreError> {
         // 验证项目存在
         let exists = sqlx::query("SELECT 1 FROM projects WHERE id = ?")
@@ -607,15 +586,15 @@ impl TaskStore {
             return Err(StoreError::ProjectNotFound(id.to_owned()));
         }
 
-        // 获取所有关联任务 ID
+        // 获取所有关联任务 ID（通过 tasks.project_id）
         let task_ids: Vec<(String,)> = sqlx::query_as(
-            "SELECT task_id FROM task_projects WHERE project_id = ?",
+            "SELECT id FROM tasks WHERE project_id = ?",
         )
         .bind(id)
         .fetch_all(&self.pool)
         .await?;
 
-        // 逐个删除任务（CASCADE 会清理 task_projects）
+        // 逐个删除任务
         for (task_id,) in task_ids {
             self.delete_task(&task_id).await?;
         }
@@ -676,6 +655,7 @@ struct TaskRow {
     task_description: String,
     context_for_all_tasks: Option<String>,
     metadata: Option<String>,
+    project_id: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -820,6 +800,7 @@ mod tests {
         );
         assert_eq!(loaded.checklist.len(), 1);
         assert_eq!(loaded.notes, vec!["笔记1"]);
+        assert!(loaded.project_id.is_none());
         assert!(
             loaded.created_at.ends_with("+00:00") || loaded.created_at.len() > 10
         );
@@ -899,6 +880,7 @@ mod tests {
             notes: vec![],
             resources: vec![],
             metadata: None,
+            project_id: None,
             created_at: "2024-01-01T00:00:00+00:00".to_owned(),
             updated_at: "2024-01-01T00:00:00+00:00".to_owned(),
         };

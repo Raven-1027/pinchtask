@@ -104,6 +104,10 @@ pub struct InitializeTaskParams {
     #[serde(default)]
     #[schemars(description = "Optional metadata for the task")]
     pub metadata: Option<TaskMetadataInput>,
+
+    #[serde(default)]
+    #[schemars(description = "Optional project ID to associate the task with at creation time")]
+    pub project_id: Option<String>,
 }
 
 /// `update_task` 参数（统一更新多个字段）。
@@ -256,9 +260,68 @@ pub struct ClearTaskParams {
 #[derive(Debug, Deserialize, JsonSchema, Default)]
 pub struct ListTasksParams {}
 
-/// `get_current_task_details` 参数（无额外参数）。
-#[derive(Debug, Deserialize, JsonSchema, Default)]
-pub struct GetCurrentTaskDetailsParams {}
+/// Action type for project operations.
+///
+/// Serialized as lowercase strings: "create", "get", "update", "delete", "list".
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectAction {
+    /// Create a new project with name and optional description.
+    Create,
+    /// Get a project by its ID.
+    Get,
+    /// Update an existing project's name and/or description.
+    Update,
+    /// Delete a project by its ID.
+    Delete,
+    /// List all projects.
+    List,
+}
+
+/// `manage_project` 参数。
+///
+/// 扁平结构，所有操作共享一个 struct，通过 `action` 字段区分操作类型。
+/// `action` 是必填字段，其他字段根据 action 类型有不同含义。
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ManageProjectParams {
+    /// The operation to perform. Must be one of: "create", "get", "update", "delete", "list".
+    #[schemars(
+        description = "The operation to perform. Must be one of: \"create\", \"get\", \"update\", \"delete\", \"list\""
+    )]
+    pub action: ProjectAction,
+
+    /// The ID of the project (required for Get/Update/Delete).
+    #[serde(default)]
+    #[schemars(description = "The ID of the project (required for Get/Update/Delete)")]
+    pub project_id: Option<String>,
+
+    /// The name of the project (required for Create, optional for Update).
+    #[serde(default)]
+    #[schemars(description = "The name of the project (required for Create, optional for Update)")]
+    pub name: Option<String>,
+
+    /// The description of the project (optional for Create/Update).
+    #[serde(default)]
+    #[schemars(description = "The description of the project (optional for Create/Update)")]
+    pub description: Option<String>,
+
+    /// Whether to delete associated tasks when deleting a project (only for Delete).
+    #[serde(default)]
+    #[schemars(description = "Whether to delete associated tasks when deleting a project (only for Delete)")]
+    pub delete_tasks: Option<bool>,
+}
+
+impl Default for ManageProjectParams {
+    fn default() -> Self {
+        Self {
+            action: ProjectAction::List,
+            project_id: None,
+            name: None,
+            description: None,
+            delete_tasks: None,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Schema 生成：内联所有 $ref，输出 MCP 客户端可直接使用的 schema
@@ -550,6 +613,7 @@ mod tests {
             .expect("should have required array");
 
         // 只有 task_description 是必填的
+        // 注意：project_id 是新增字段，也是可选的
         assert_eq!(required.len(), 1);
         assert_eq!(required[0].as_str(), Some("task_description"));
 
@@ -560,6 +624,7 @@ mod tests {
             "notes",
             "resources",
             "metadata",
+            "project_id",
         ];
         for field in &optional_fields {
             assert!(
@@ -593,9 +658,3 @@ mod tests {
         assert_eq!(schema.get("type").and_then(|v| v.as_str()), Some("string"));
     }
 }
-
-    #[test]
-    fn print_new_task_schema() {
-        let schema = json_schema_for::<InitializeTaskParams>();
-        eprintln!("{}", serde_json::to_string_pretty(&schema).unwrap());
-    }

@@ -148,7 +148,7 @@ impl PinchTaskServer {
             params.notes.unwrap_or_default(),
             resources,
             metadata,
-            None,
+            params.project_id.as_deref(),
         )
         .await
         .into_tool_result(|t| task_to_result(&t))
@@ -398,32 +398,93 @@ impl PinchTaskServer {
     }
 
     // ------------------------------------------------------------------
-    // 17. get_current_task_details
+    // 17. manage_project
     // ------------------------------------------------------------------
     #[tool(
-        name = "get_current_task_details",
-        description = "Get details of the first uncompleted task with full context. Returns the task context and the first incomplete sub-task's full details (name, description, plan, status). Returns error if no uncompleted task exists."
+        name = "manage_project",
+        description = "Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.\n\nSelect the action based on what you need:\n\n- \"create\": Create a new project. Provide name (required) and description (optional).\n\n- \"get\": Get a project by its ID. Provide project_id.\n\n- \"update\": Update a project's name and/or description. Provide project_id and the fields to change.\n\n- \"delete\": Delete a project. Provide project_id. Set delete_tasks=true to also delete all associated tasks (otherwise tasks are kept with project_id cleared).\n\n- \"list\": List all projects. No additional parameters needed.\n\nThis is the single entry point for all project operations.",
+        input_schema = crate::tools::params::json_schema_for::<ManageProjectParams>()
     )]
-    pub async fn get_current_task_details(
+    pub async fn manage_project(
         &self,
-        Parameters(_params): Parameters<GetCurrentTaskDetailsParams>,
+        Parameters(params): Parameters<ManageProjectParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tasks = match self.store.list_tasks().await {
-            Ok(t) => t,
-            Err(e) => return Ok(text_result(format!("{e}"), true)),
-        };
-        let current_task = match tasks.iter().find(|t| t.checklist.iter().any(|item| !item.done)) {
-            Some(t) => t,
-            None => {
-                return Ok(text_result(
-                    "没有找到包含未完成子任务的任务".to_owned(),
-                    true,
-                ))
+        match params.action {
+            ProjectAction::Create => {
+                let name = params.name.ok_or_else(|| {
+                    ErrorData::invalid_params("name is required for create action", None)
+                })?;
+                core::create_project(
+                    &self.store,
+                    &name,
+                    params.description.as_deref(),
+                )
+                .await
+                .into_tool_result(|p| {
+                    let json = serde_json::to_string_pretty(&p)
+                        .unwrap_or_else(|e| format!("序列化项目失败: {e}"));
+                    text_result(json, false)
+                })
             }
-        };
-        core::get_current_task_details(&self.store, &current_task.id)
-            .await
-            .into_tool_result(|s| text_result(s, false))
+            ProjectAction::Get => {
+                let project_id = params.project_id.ok_or_else(|| {
+                    ErrorData::invalid_params("project_id is required for get action", None)
+                })?;
+                core::get_project(&self.store, &project_id)
+                    .await
+                    .into_tool_result(|p| {
+                        let json = serde_json::to_string_pretty(&p)
+                            .unwrap_or_else(|e| format!("序列化项目失败: {e}"));
+                        text_result(json, false)
+                    })
+            }
+            ProjectAction::Update => {
+                let project_id = params.project_id.ok_or_else(|| {
+                    ErrorData::invalid_params("project_id is required for update action", None)
+                })?;
+                core::update_project(
+                    &self.store,
+                    &project_id,
+                    params.name.as_deref(),
+                    params.description.as_deref(),
+                )
+                .await
+                .into_tool_result(|p| {
+                    let json = serde_json::to_string_pretty(&p)
+                        .unwrap_or_else(|e| format!("序列化项目失败: {e}"));
+                    text_result(json, false)
+                })
+            }
+            ProjectAction::Delete => {
+                let project_id = params.project_id.ok_or_else(|| {
+                    ErrorData::invalid_params("project_id is required for delete action", None)
+                })?;
+                if params.delete_tasks.unwrap_or(false) {
+                    void_result(
+                        core::delete_project_with_tasks(&self.store, &project_id).await,
+                        format!("项目 {} 及其关联任务已删除", project_id),
+                    )
+                } else {
+                    void_result(
+                        core::delete_project(&self.store, &project_id).await,
+                        format!("项目 {} 已删除（关联任务保留）", project_id),
+                    )
+                }
+            }
+            ProjectAction::List => {
+                core::list_projects(&self.store)
+                    .await
+                    .into_tool_result(|projects| {
+                        if projects.is_empty() {
+                            text_result("当前没有任何项目".to_owned(), false)
+                        } else {
+                            let json = serde_json::to_string_pretty(&projects)
+                                .unwrap_or_else(|e| format!("序列化项目列表失败: {e}"));
+                            text_result(json, false)
+                        }
+                    })
+            }
+        }
     }
 }
 

@@ -1,4 +1,6 @@
 //! 项目级操作：创建、查询、更新、删除、任务关联。
+//!
+//! 任务与项目为一对多关系：每个任务最多属于一个项目（通过 tasks.project_id 外键）。
 
 use crate::models::project::Project;
 use crate::models::task::Task;
@@ -38,7 +40,7 @@ pub async fn update_project(
     Ok(project)
 }
 
-/// 删除项目（保留关联任务，task_projects 通过 CASCADE 自动清理）。
+/// 删除项目（保留关联任务，tasks.project_id 通过 ON DELETE SET NULL 自动清空）。
 pub async fn delete_project(store: &TaskStore, id: &str) -> Result<(), StoreError> {
     store.delete_project(id).await
 }
@@ -53,38 +55,33 @@ pub async fn list_projects(store: &TaskStore) -> Result<Vec<Project>, StoreError
     store.list_projects().await
 }
 
-/// 将任务添加到项目。
-pub async fn add_task_to_project(
-    store: &TaskStore,
-    task_id: &str,
-    project_id: &str,
-) -> Result<(), StoreError> {
-    store.add_task_to_project(task_id, project_id).await
-}
-
-/// 将任务从项目中移除。
-pub async fn remove_task_from_project(
-    store: &TaskStore,
-    task_id: &str,
-    project_id: &str,
-) -> Result<(), StoreError> {
-    store.remove_task_from_project(task_id, project_id).await
-}
-
-/// 获取指定任务关联的所有项目。
-pub async fn get_projects_for_task(
-    store: &TaskStore,
-    task_id: &str,
-) -> Result<Vec<Project>, StoreError> {
-    store.get_projects_for_task(task_id).await
-}
-
-/// 获取指定项目关联的所有任务。
+/// 获取指定项目关联的所有任务（通过 tasks.project_id 查询）。
 pub async fn get_tasks_for_project(
     store: &TaskStore,
     project_id: &str,
 ) -> Result<Vec<Task>, StoreError> {
     store.get_tasks_for_project(project_id).await
+}
+
+/// 获取指定任务所属的项目。
+///
+/// 返回 `None` 表示任务未关联任何项目。
+pub async fn get_project_for_task(
+    store: &TaskStore,
+    task_id: &str,
+) -> Result<Option<Project>, StoreError> {
+    store.get_project_for_task(task_id).await
+}
+
+/// 设置任务的所属项目。
+///
+/// 传入 `Some(project_id)` 关联到项目，传入 `None` 取消关联。
+pub async fn set_task_project(
+    store: &TaskStore,
+    task_id: &str,
+    project_id: Option<&str>,
+) -> Result<Task, StoreError> {
+    store.set_task_project(task_id, project_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +214,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_and_remove_task_to_project() {
+    async fn set_and_get_task_project() {
         let (store, _dir) = temp_store().await;
         let project = create_project(&store, "关联项目", None)
             .await
@@ -227,57 +224,57 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        // 添加关联
-        add_task_to_project(&store, &task.id, &project.id)
+        // 设置关联
+        let task = set_task_project(&store, &task.id, Some(&project.id))
             .await
-            .expect("添加关联失败");
+            .expect("设置关联失败");
+        assert_eq!(task.project_id, Some(project.id.clone()));
 
-        // 查询验证
-        let projects = get_projects_for_task(&store, &task.id)
+        // 查询任务所属项目
+        let proj = get_project_for_task(&store, &task.id)
             .await
             .expect("获取项目失败");
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "关联项目");
+        assert_eq!(proj.as_ref().unwrap().name, "关联项目");
 
+        // 查询项目下的任务
         let tasks = get_tasks_for_project(&store, &project.id)
             .await
             .expect("获取任务失败");
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].task_description, "关联任务");
 
-        // 移除关联
-        remove_task_from_project(&store, &task.id, &project.id)
+        // 取消关联
+        let task = set_task_project(&store, &task.id, None)
             .await
-            .expect("移除关联失败");
-        let projects = get_projects_for_task(&store, &task.id)
+            .expect("取消关联失败");
+        assert!(task.project_id.is_none());
+        let proj = get_project_for_task(&store, &task.id)
             .await
             .expect("获取项目失败");
-        assert!(projects.is_empty());
+        assert!(proj.is_none());
     }
 
     #[tokio::test]
-    async fn delete_project_cascade_removes_associations() {
+    async fn delete_project_cascade_clears_task_project_id() {
         let (store, _dir) = temp_store().await;
         let project = create_project(&store, "级联项目", None)
             .await
             .expect("创建项目失败");
         let task = store
-            .create_task("级联任务", None, vec![], vec![], vec![], None, None)
+            .create_task("级联任务", None, vec![], vec![], vec![], None, Some(&project.id))
             .await
             .expect("创建任务失败");
+        assert_eq!(task.project_id, Some(project.id.clone()));
 
-        add_task_to_project(&store, &task.id, &project.id)
-            .await
-            .expect("添加关联失败");
-
-        // 删除项目后，任务应保留但关联应被清理
+        // 删除项目后，任务的 project_id 应被 SET NULL
         delete_project(&store, &project.id)
             .await
             .expect("删除项目失败");
 
-        // 任务仍存在
+        // 任务仍存在，但 project_id 被清空
         let loaded = store.get_task(&task.id).await.expect("任务应仍存在");
         assert_eq!(loaded.task_description, "级联任务");
+        assert!(loaded.project_id.is_none());
     }
 
     #[tokio::test]
@@ -287,13 +284,9 @@ mod tests {
             .await
             .expect("创建项目失败");
         let task = store
-            .create_task("将被删除的任务", None, vec![], vec![], vec![], None, None)
+            .create_task("将被删除的任务", None, vec![], vec![], vec![], None, Some(&project.id))
             .await
             .expect("创建任务失败");
-
-        add_task_to_project(&store, &task.id, &project.id)
-            .await
-            .expect("添加关联失败");
 
         // 智能删除：项目和关联任务都应被删除
         delete_project_with_tasks(&store, &project.id)
@@ -305,13 +298,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_with_project_ids() {
+    async fn create_task_with_project_id() {
         let (store, _dir) = temp_store().await;
         let project = create_project(&store, "初始关联项目", None)
             .await
             .expect("创建项目失败");
 
-        let pids = vec![project.id.clone()];
         let task = store
             .create_task(
                 "带项目的任务",
@@ -320,15 +312,16 @@ mod tests {
                 vec![],
                 vec![],
                 None,
-                Some(&pids),
+                Some(&project.id),
             )
             .await
             .expect("创建任务失败");
 
-        let projects = get_projects_for_task(&store, &task.id)
+        assert_eq!(task.project_id, Some(project.id));
+
+        let proj = get_project_for_task(&store, &task.id)
             .await
             .expect("获取项目失败");
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "初始关联项目");
+        assert_eq!(proj.unwrap().name, "初始关联项目");
     }
 }

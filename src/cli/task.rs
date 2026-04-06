@@ -41,9 +41,9 @@ pub struct NewArgs {
     /// 共享上下文
     #[arg(short, long)]
     pub context: Option<String>,
-    /// 关联到指定项目（可多次使用）
-    #[arg(short, long = "project")]
-    pub projects: Vec<String>,
+    /// 关联到指定项目
+    #[arg(short = 'p', long = "project")]
+    pub project: Option<String>,
 }
 
 /// 列出任务
@@ -119,11 +119,6 @@ pub async fn run_task(command: &TaskCommands, store: &TaskStore, json: bool) -> 
 
 /// 创建新任务。
 async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
-    let project_ids: Option<Vec<String>> = if args.projects.is_empty() {
-        None
-    } else {
-        Some(args.projects.clone())
-    };
     let task = core::initialize_task(
         store,
         &args.description,
@@ -132,7 +127,7 @@ async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
         vec![],
         vec![],
         None,
-        project_ids.as_deref(),
+        args.project.as_deref(),
     )
     .await?;
     output::print(output::Output::Task(&task), json);

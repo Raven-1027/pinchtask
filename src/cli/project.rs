@@ -223,7 +223,7 @@ async fn run_add_task(
     let tasks = store.list_tasks().await?;
     let full_task_id = super::resolve::resolve_task_id(task_id, &tasks)?;
 
-    core::add_task_to_project(store, &full_task_id, &full_project_id).await?;
+    core::set_task_project(store, &full_task_id, Some(&full_project_id)).await?;
     output::print(
         output::Output::Success(format!(
             "任务 {} 已添加到项目 {}",
@@ -238,24 +238,19 @@ async fn run_add_task(
 /// 将任务从项目中移除。
 async fn run_remove_task(
     store: &TaskStore,
-    project_id: &str,
+    _project_id: &str,
     task_id: &str,
     json: bool,
 ) -> Result<()> {
-    // 解析项目 ID
-    let projects = core::list_projects(store).await?;
-    let full_project_id = resolve_project_id(project_id, &projects)?;
-
     // 解析任务 ID
     let tasks = store.list_tasks().await?;
     let full_task_id = super::resolve::resolve_task_id(task_id, &tasks)?;
 
-    core::remove_task_from_project(store, &full_task_id, &full_project_id).await?;
+    core::set_task_project(store, &full_task_id, None).await?;
     output::print(
         output::Output::Success(format!(
-            "任务 {} 已从项目 {} 移除",
-            &full_task_id[..8.min(full_task_id.len())],
-            &full_project_id[..8.min(full_project_id.len())]
+            "任务 {} 已从项目中移除",
+            &full_task_id[..8.min(full_task_id.len())]
         )),
         json,
     );
