@@ -237,6 +237,23 @@ pub async fn my_tool(&self, Parameters(p): Parameters<MyParams>) -> ... { ... }
 
 当前需要显式指定 `input_schema` 的工具：`new_task`（含 `InitialChecklistItem`、`ResourceInput`、`TaskMetadataInput`）、`manage_checklist_item`（含 `Action` 枚举）、`manage_project`（含 `ProjectAction` 枚举）。
 
+### 文档同步：变更代码时必须同步更新文档
+
+代码变更往往导致文档过时。**提交涉及以下范围的代码变更时，必须同时检查并更新对应的文档文件，作为同一提交的一部分：**
+
+| 变更范围 | 需同步检查的文档 |
+|----------|-----------------|
+| CLI 命令/参数增删改 | `docs/cli-reference.md`、`README.md`（CLI 用法、快速开始） |
+| MCP 工具增删改 | `AGENT.md`（MCP 工具表）、`docs/mcp-protocol.md` |
+| 数据模型变更 | `AGENT.md`（数据模型章节）、`docs/architecture.md` |
+| 项目结构变更（新增/删除/重命名模块） | `AGENT.md`（项目结构树）、`README.md`（项目结构） |
+| 新增/删除依赖 | `AGENT.md`（技术栈表） |
+| 退出码/错误类型变更 | `AGENT.md`（退出码约定）、`README.md`（退出码） |
+| TUI 功能变更 | `README.md`（TUI 快捷键表）、`docs/tui-design.md` |
+| 构建方式/feature 变更 | `AGENT.md`（开发命令）、`README.md`（安装/构建） |
+
+**执行方式**：在提交前，对照上表检查本次变更是否命中某个范围。如果命中，先读取对应文档确认是否需要更新，再一并提交。不要将代码变更和文档更新拆成两个提交。
+
 ### 🔧 待办/改进方向
 
 - 考虑添加任务搜索/过滤功能
