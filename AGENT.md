@@ -7,7 +7,7 @@
 - **语言**: Rust (Edition 2021)
 - **版本**: 0.2.0
 - **许可证**: MIT
-- **代码量**: ~8700 行 Rust 代码
+- **代码量**: ~11500 行 Rust 代码
 - **构建状态**: 编译通过，104 个测试全部通过（86 单元测试 + 18 集成测试）
 
 ## 技术栈
@@ -88,7 +88,8 @@ pinchtask/
 │   ├── architecture.md      # 架构文档
 │   ├── cli-reference.md     # CLI 参考文档
 │   ├── cli-redesign.md      # CLI 重设计记录
-│   └── mcp-protocol.md      # MCP 协议说明
+│   ├── mcp-protocol.md      # MCP 协议说明
+│   └── tui-design.md        # TUI 设计文档
 ├── Cargo.toml
 └── README.md
 ```
@@ -124,7 +125,7 @@ pinchtask/
 
 ## 核心功能
 
-### MCP 工具（10 个）
+### MCP 工具（9 个）
 
 | 工具名                     | 功能                                                 |
 | -------------------------- | ---------------------------------------------------- |
@@ -136,7 +137,6 @@ pinchtask/
 | `get_checklist_summary`    | 获取清单进度摘要                                     |
 | `clear_task`               | 删除任务                                             |
 | `list_tasks`               | 列出所有任务                                         |
-| `get_current_task_details` | 获取第一个未完成任务详情                             |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）        |
 
 ### CLI 命令（嵌套子命令结构）
@@ -197,7 +197,7 @@ Project {
 - 完整的 MCP 服务器实现（stdio 传输，JSON-RPC 2.0）
 - 完整的 CLI 命令行工具（嵌套子命令结构）
 - 核心业务逻辑层解耦
-- 10 个 MCP 工具全部注册
+- 9 个 MCP 工具全部注册
 - 存储层从 JSON 文件迁移到 SQLite + sqlx（异步）
 - 项目管理功能（CRUD、任务关联，一对多外键模型）
 - 完整的交互式 TUI 界面（ratatui + crossterm），支持任务/项目列表、详情、创建/编辑表单
