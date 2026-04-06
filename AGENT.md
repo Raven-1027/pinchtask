@@ -251,8 +251,11 @@ pub async fn my_tool(&self, Parameters(p): Parameters<MyParams>) -> ... { ... }
 | 退出码/错误类型变更 | `AGENT.md`（退出码约定）、`README.md`（退出码） |
 | TUI 功能变更 | `README.md`（TUI 快捷键表）、`docs/tui-design.md` |
 | 构建方式/feature 变更 | `AGENT.md`（开发命令）、`README.md`（安装/构建） |
+| 版本发布 | `Cargo.toml`（version）、`AGENT.md`（版本号、代码量）、`README.md.en`（如有）、`CHANGELOG.md` |
 
-**执行方式**：在提交前，对照上表检查本次变更是否命中某个范围。如果命中，先读取对应文档确认是否需要更新，再一并提交。不要将代码变更和文档更新拆成两个提交。
+**执行方式**：在提交前，对照上表检查本次变更是否命中某个范围。如果命中，先读取对应文档确认是否需要更新，再一并提交。不要将代码变更和文档更新拆成两个提交。版本发布时，按以下顺序操作：更新 `Cargo.toml` 版本号 → 在 `CHANGELOG.md` 顶部添加本次版本条目 → 同步更新 `AGENT.md` 和 `README.md.en` 中的版本号与代码量等元数据 → 提交并打 tag。
+
+
 
 ### 🔧 待办/改进方向
 
