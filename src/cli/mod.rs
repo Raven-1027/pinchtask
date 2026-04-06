@@ -206,9 +206,9 @@ pub async fn run() -> Result<()> {
         Commands::Tag(args) => meta::run_tag(args, &store, json).await,
         Commands::Link(args) => resource::run_link(args, &store, json).await,
         // 已在上方 match 中提前返回，不会到达
+        Commands::Serve => unreachable!(),
         #[cfg(feature = "tui")]
-        Commands::Serve | Commands::Tui | Commands::Completion(_) => unreachable!(),
-        #[cfg(not(feature = "tui"))]
-        Commands::Serve | Commands::Completion(_) => unreachable!(),
+        Commands::Tui => unreachable!(),
+        Commands::Completion(_) => unreachable!(),
     }
 }
