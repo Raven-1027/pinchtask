@@ -68,9 +68,7 @@ impl<'a> Widget for TaskDetail<'a> {
             Span::styled(" 📋 ", Style::default().fg(ACCENT)),
             Span::styled(
                 &self.task.task_description,
-                Style::default()
-                    .fg(ACCENT)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
         ]));
         let id_short = &self.task.id[..self.task.id.len().min(8)];
@@ -152,9 +150,7 @@ impl<'a> Widget for TaskDetail<'a> {
         if self.task.checklist.is_empty() {
             lines.push(Line::styled(
                 "   （无清单条目，按 a 添加）",
-                Style::default()
-                    .fg(MUTED)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
             ));
         } else {
             // 计算清单区可用行数
@@ -179,7 +175,11 @@ impl<'a> Widget for TaskDetail<'a> {
 
             for (i, item) in visible_items {
                 let is_selected = i == self.selected_item_index;
-                let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
+                let marker = if is_selected {
+                    ICON_SELECTED
+                } else {
+                    ICON_UNSELECTED
+                };
 
                 // 行样式
                 let row_style = if is_selected {
@@ -210,10 +210,7 @@ impl<'a> Widget for TaskDetail<'a> {
                 lines.push(Line::from(vec![
                     Span::styled(format!(" {marker} "), row_style),
                     checkbox_span,
-                    Span::styled(
-                        format!("{:<w$}", name, w = item_name_width),
-                        row_style,
-                    ),
+                    Span::styled(format!("{:<w$}", name, w = item_name_width), row_style),
                 ]));
 
                 // 选中时显示详细描述和上下文计划
@@ -243,22 +240,18 @@ impl<'a> Widget for TaskDetail<'a> {
 
         // ── 4. 笔记区 ─────────────────────────────────────────────────
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" 📝 笔记 ({})", self.task.notes.len()),
-                Style::default()
-                    .fg(HIGHLIGHT_FG)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            format!(" 📝 笔记 ({})", self.task.notes.len()),
+            Style::default()
+                .fg(HIGHLIGHT_FG)
+                .add_modifier(Modifier::BOLD),
+        )]));
         lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.task.notes.is_empty() {
             lines.push(Line::styled(
                 "   （暂无笔记）",
-                Style::default()
-                    .fg(MUTED)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
             ));
         } else {
             for (i, note) in self.task.notes.iter().enumerate() {
@@ -267,10 +260,7 @@ impl<'a> Widget for TaskDetail<'a> {
                 for (li, line) in wrapped.into_iter().enumerate() {
                     if li == 0 {
                         lines.push(Line::from(vec![
-                            Span::styled(
-                                format!(" {}. ", i + 1),
-                                Style::default().fg(MUTED),
-                            ),
+                            Span::styled(format!(" {}. ", i + 1), Style::default().fg(MUTED)),
                             Span::raw(line),
                         ]));
                     } else {
@@ -282,22 +272,16 @@ impl<'a> Widget for TaskDetail<'a> {
 
         // ── 5. 资源区 ─────────────────────────────────────────────────
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" 🔗 资源 ({})", self.task.resources.len()),
-                Style::default()
-                    .fg(LINK)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            format!(" 🔗 资源 ({})", self.task.resources.len()),
+            Style::default().fg(LINK).add_modifier(Modifier::BOLD),
+        )]));
         lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         if self.task.resources.is_empty() {
             lines.push(Line::styled(
                 "   （暂无关联资源）",
-                Style::default()
-                    .fg(MUTED)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
             ));
         } else {
             let url_width = total_width.saturating_sub(6);
@@ -318,12 +302,13 @@ impl<'a> Widget for TaskDetail<'a> {
 
         // ── 6. 时间信息 ───────────────────────────────────────────────
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" 创建: {}  更新: {}", self.task.created_at, self.task.updated_at),
-                Style::default().fg(MUTED),
+        lines.push(Line::from(vec![Span::styled(
+            format!(
+                " 创建: {}  更新: {}",
+                self.task.created_at, self.task.updated_at
             ),
-        ]));
+            Style::default().fg(MUTED),
+        )]));
 
         // 使用 Paragraph 渲染所有行
         let widget = ratatui::widgets::Paragraph::new(lines);
@@ -416,6 +401,7 @@ mod tests {
                 priority: Some("high".to_owned()),
                 estimated_completion_time: Some("P3D".to_owned()),
             }),
+            project_id: None,
             created_at: "2026-04-03T18:30:00Z".to_owned(),
             updated_at: "2026-04-04T10:00:00Z".to_owned(),
         }

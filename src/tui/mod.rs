@@ -82,11 +82,8 @@ pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
     let mut event_bus = EventBus::new();
     app.set_action_tx(event_bus.sender());
 
-    // ── 启动时加载任务列表 ─────────────────────────────────────────────
-    if let Err(e) = app.load_tasks().await {
-        // 数据库加载失败不阻止 TUI 启动，记录错误信息
-        app.set_error_message(format!("加载任务失败: {e}"));
-    }
+    // ── 启动时加载项目列表（会自动加载首个项目的任务） ─────────────────
+    app.spawn_load_projects();
 
     // ── 主循环 ─────────────────────────────────────────────────────────
     loop {

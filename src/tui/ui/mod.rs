@@ -1,49 +1,17 @@
 //! TUI 渲染模块入口。
 //!
 //! 负责将 `App` 状态绘制到终端帧缓冲区。
-//! 每个视图对应一个独立的渲染函数。
-//!
-//! ═══════════════════════════════════════════════════════════════════════
-//! 项目管理功能 — 视图架构设计
-//! ═══════════════════════════════════════════════════════════════════════
-//!
-//! 新增 View 变体:
-//!   - ProjectList:  项目列表视图（表格 + 选中高亮）
-//!   - ProjectDetail: 项目详情视图（名称/描述/时间 + 关联任务列表）
-//!   - ProjectForm:  项目表单视图（名称 + 描述）
-//!
-//! 导航路径:
-//!   TaskList ── p 键 ──▸ ProjectList
-//!   ProjectList ◂── Esc ── TaskList
-//!   ProjectList ── Enter ──▸ ProjectDetail
-//!   ProjectList ── n ──▸ ProjectForm（新建）
-//!   ProjectDetail ── E ──▸ ProjectForm（编辑）
-//!   ProjectDetail ── Enter ──▸ TaskDetail（查看关联任务）
-//!   ProjectDetail ◂── Esc ── ProjectList
-//!   ProjectForm ◂── Esc ── ProjectDetail / ProjectList
-//!
-//! 项目详情视图内容:
-//!   项目名、描述、创建时间、更新时间
-//!   关联任务列表（描述、进度、优先级）
-//!
-//! 项目表单:
-//!   名称（必填）+ 描述（可选）
-//!   Tab 切换字段，Enter 提交，Esc 取消
-//!
-//! 快捷键映射:
-//!   ProjectList: ↑↓/jk 移动，Enter 详情，n 新建，d 删除，r 刷新，Esc 返回
-//!   ProjectDetail: ↑↓/jk 移动任务，Enter 查看任务，E 编辑项目，d 删除项目，Esc 返回
-//!   ProjectForm: Tab 切换字段，Enter 提交，Esc 取消
+//! 采用左右分栏布局：左栏项目列表（30%），右栏任务列表/详情/表单（70%）。
+//! 覆盖层（对话框、表单）渲染在分栏之上。
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::Frame;
 
-use super::app::{App, FormField, FormMode, InputMode, View};
+use super::app::{App, FocusedPane, FormField, FormMode, InputMode, Overlay, RightPaneView};
 
-pub mod project_detail;
 pub mod project_form;
 pub mod project_list;
 pub mod task_detail;
@@ -52,9 +20,17 @@ pub mod theme;
 
 use theme::*;
 
+// ── 布局比例 ───────────────────────────────────────────────────────────────
+
+/// 左栏（项目列表）宽度占比。
+const LEFT_PANE_PERCENT: u16 = 30;
+/// 右栏（任务列表/详情/表单）宽度占比。
+const RIGHT_PANE_PERCENT: u16 = 70;
+
 // ── 公开渲染入口 ───────────────────────────────────────────────────────────
 
 /// 顶层渲染入口：根据当前视图分发到对应的渲染函数。
+/// 主渲染入口：左右分栏布局 + 覆盖层。
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
 
@@ -64,7 +40,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         return;
     }
 
-    let chunks = Layout::default()
+    // 外层垂直布局：标题栏 + 主内容区 + 状态栏
+    let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // 标题栏
@@ -73,34 +50,27 @@ pub fn draw(f: &mut Frame, app: &App) {
         ])
         .split(size);
 
-    draw_title_bar(f, chunks[0], app);
+    draw_title_bar(f, outer_chunks[0], app);
 
-    match app.view() {
-        View::TaskList => draw_task_list(f, chunks[1], app),
-        View::TaskDetail => draw_task_detail(f, chunks[1], app),
-        View::TaskForm => draw_task_form(f, chunks[1], app),
-        View::Help => draw_help(f, chunks[1], app),
-        View::ProjectList => draw_project_list(f, chunks[1], app),
-        View::ProjectDetail => draw_project_detail(f, chunks[1], app),
-        View::ProjectForm => draw_project_form(f, chunks[1], app),
-    }
+    // 内层水平布局：左栏（项目列表）+ 右栏（任务列表/详情/表单）
+    let inner_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(LEFT_PANE_PERCENT),
+            Constraint::Percentage(RIGHT_PANE_PERCENT),
+        ])
+        .split(outer_chunks[1]);
 
-    // 删除确认对话框（覆盖层）
-    if app.confirm_delete() {
-        draw_delete_confirm(f, size, app);
-    }
+    // 左栏：始终渲染项目列表
+    draw_left_pane(f, inner_chunks[0], app);
 
-    // 笔记删除确认对话框（覆盖层）
-    if app.confirm_delete_note() {
-        draw_delete_note_confirm(f, size, app);
-    }
+    // 右栏：按 RightPaneView 分派
+    draw_right_pane(f, inner_chunks[1], app);
 
-    // 项目删除确认对话框（覆盖层）
-    if app.confirm_delete_project() {
-        draw_delete_project_confirm(f, size, app);
-    }
+    // 覆盖层（渲染在全屏区域之上）
+    draw_overlays(f, size, app);
 
-    draw_status_bar(f, chunks[2], app);
+    draw_status_bar(f, outer_chunks[2], app);
 }
 
 // ── 最小终端尺寸提示 ───────────────────────────────────────────────────────
@@ -112,9 +82,7 @@ fn draw_too_small(f: &mut Frame, area: Rect) {
     );
     let paragraph = Paragraph::new(Line::from(Span::styled(
         msg,
-        Style::default()
-            .fg(ACCENT)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
     )))
     .style(Style::default().bg(TITLE_BG))
     .alignment(ratatui::layout::Alignment::Center);
@@ -124,26 +92,25 @@ fn draw_too_small(f: &mut Frame, area: Rect) {
 // ── 标题栏 ─────────────────────────────────────────────────────────────────
 
 fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
-    let view_name = match app.view() {
-        View::TaskList => "任务列表",
-        View::TaskDetail => "任务详情",
-        View::TaskForm => "新建/编辑任务",
-        View::Help => "帮助",
-        View::ProjectList => "项目列表",
-        View::ProjectDetail => "项目详情",
-        View::ProjectForm => "新建/编辑项目",
+    // 焦点标识
+    let focus_label = match app.focused_pane() {
+        FocusedPane::Left => "项目",
+        FocusedPane::Right => match app.right_pane_view() {
+            RightPaneView::TaskList => "任务",
+            RightPaneView::TaskDetail => "详情",
+            RightPaneView::TaskForm => "表单",
+            RightPaneView::Help => "帮助",
+        },
     };
 
     let mut spans = vec![
         Span::styled(
             " pinchtask TUI ",
-            Style::default()
-                .fg(ACCENT)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
         Span::styled(
-            format!("[{view_name}]"),
+            format!("[{focus_label}]"),
             Style::default().fg(HIGHLIGHT_FG),
         ),
     ];
@@ -166,8 +133,8 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
         }
     }
 
-    // 排序方式
-    if app.view() == &View::TaskList && !app.search_mode() {
+    // 排序方式（仅在右栏任务列表且非搜索模式时显示）
+    if *app.right_pane_view() == RightPaneView::TaskList && !app.search_mode() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!("排序: {}", app.sort_mode().label()),
@@ -182,54 +149,139 @@ fn draw_title_bar(f: &mut Frame, area: Rect, app: &App) {
 // ── 状态栏 ─────────────────────────────────────────────────────────────────
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
-    let text = if let Some(err) = app.error_message() {
-        Line::from(vec![
+    let width = area.width as usize;
+
+    // 错误消息：全红显示，覆盖键位（高优先级临时通知）
+    if let Some(err) = app.error_message() {
+        let text = Line::from(vec![
             Span::styled(
                 format!(" {} ", ICON_ERROR),
                 Style::default().fg(TEXT).bg(Color::Red),
             ),
             Span::styled(err.to_owned(), Style::default().fg(Color::Red)),
-        ])
-    } else if let Some(msg) = app.message() {
-        Line::from(vec![
-            Span::styled(
-                format!(" {} ", ICON_INFO),
-                Style::default().fg(Color::Black).bg(ACCENT),
-            ),
-            Span::styled(msg.to_owned(), Style::default().fg(ACCENT)),
-        ])
+        ]);
+        let paragraph = Paragraph::new(text).style(Style::default().bg(Color::Black));
+        f.render_widget(paragraph, area);
+        return;
+    }
+
+    // 计算键位提示（始终显示）
+    let hints: &str = if app.is_overlay_active() {
+        match app.overlay() {
+            Overlay::None => "",
+            Overlay::ProjectForm(_) => " Tab 切换字段  Enter 提交  Esc 取消",
+            Overlay::DeleteProject | Overlay::DeleteTask | Overlay::DeleteNote => {
+                " y 确认  n/Esc 取消"
+            }
+            Overlay::Input(_) => " Enter 确认  Esc 取消  Backspace 删除",
+        }
     } else {
-        let hints = match app.view() {
-            View::TaskList => {
-                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r/Ctrl+R 刷新  / 搜索  Tab 排序  p 项目  ? 帮助  q 退出"
+        match app.focused_pane() {
+            FocusedPane::Left => {
+                " ↑↓/jk 移动  →/Enter 切换右栏  n 新建项目  e 编辑  d 删除  r 刷新  ? 帮助  q 退出"
             }
-            View::TaskDetail => {
-                if app.input_mode() != &InputMode::Normal {
-                    " Enter 确认  Esc 取消  Backspace 删除"
-                } else {
-                    " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除条目  N 添加笔记  D 删除笔记  L 添加资源  Ctrl+D 删除任务  Ctrl+J/K 移动顺序  Esc 返回"
+            FocusedPane::Right => match app.right_pane_view() {
+                RightPaneView::TaskList => {
+                    " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r/Ctrl+R 刷新  / 搜索  Tab 排序  ←/Esc 左栏  ? 帮助"
                 }
-            }
-            View::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
-            View::Help => " Esc/? 返回  q 退出",
-            View::ProjectList => {
-                " ↑↓/jk 移动  Enter 详情  n 新建  d 删除  r 刷新  Esc 返回任务列表"
-            }
-            View::ProjectDetail => {
-                " ↑↓/jk 移动  Enter 查看任务  E 编辑项目  d 删除项目  Esc 返回"
-            }
-            View::ProjectForm => " Tab 切换字段  Enter 提交  Esc 取消",
-        };
-        Line::from(Span::styled(hints, Style::default().fg(MUTED)))
+                RightPaneView::TaskDetail => {
+                    if app.input_mode() != &InputMode::Normal {
+                        " Enter 确认  Esc 取消  Backspace 删除"
+                    } else {
+                        " ↑↓/jk 移动  Space 完成  a 添加  e 编辑  E 编辑任务  d 删除条目  N 笔记  D 删笔记  L 资源  Ctrl+D 删任务  Ctrl+J/K 移动  ←/Esc 返回"
+                    }
+                }
+                RightPaneView::TaskForm => " Tab 切换字段  Enter 提交  Esc 取消",
+                RightPaneView::Help => " Esc/? 返回  q 退出",
+            },
+        }
     };
 
-    let paragraph = Paragraph::new(text).style(Style::default().bg(TITLE_BG));
-    f.render_widget(paragraph, area);
+    // 信息消息作为前缀，不覆盖键位提示
+    if let Some(msg) = app.message() {
+        let icon = format!(" {} ", ICON_INFO);
+        let msg_text = format!("{msg}  ");
+        let prefix_len = icon.chars().count() + msg_text.chars().count();
+        let remaining = width.saturating_sub(prefix_len);
+        let truncated: String = hints.chars().take(remaining).collect();
+        let text = Line::from(vec![
+            Span::styled(icon, Style::default().fg(Color::Black).bg(ACCENT)),
+            Span::styled(msg_text, Style::default().fg(ACCENT)),
+            Span::styled(truncated, Style::default().fg(TEXT)),
+        ]);
+        let paragraph = Paragraph::new(text).style(Style::default().bg(Color::Black));
+        f.render_widget(paragraph, area);
+    } else {
+        let text = Line::from(Span::styled(hints, Style::default().fg(TEXT)));
+        let paragraph = Paragraph::new(text).style(Style::default().bg(Color::Black));
+        f.render_widget(paragraph, area);
+    }
 }
 
-// ── 任务列表视图 ───────────────────────────────────────────────────────────
+// ── 左栏渲染 ───────────────────────────────────────────────────────────────
 
-fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
+/// 左栏：始终渲染项目列表。
+fn draw_left_pane(f: &mut Frame, area: Rect, app: &App) {
+    let is_focused = *app.focused_pane() == FocusedPane::Left;
+    let border_style = if is_focused {
+        Style::default().fg(BORDER_FOCUSED)
+    } else {
+        Style::default().fg(BORDER)
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(
+            format!(" {} 项目 ", ICON_BULLET),
+            Style::default().fg(if is_focused { ACCENT } else { MUTED }),
+        ));
+    f.render_widget(&block, area);
+    let inner_area = block.inner(area);
+
+    let widget =
+        project_list::ProjectList::new(app.projects(), app.project_selected_index(), is_focused);
+    f.render_widget(widget, inner_area);
+}
+
+// ── 右栏渲染 ───────────────────────────────────────────────────────────────
+
+/// 右栏：按 RightPaneView 分派。
+fn draw_right_pane(f: &mut Frame, area: Rect, app: &App) {
+    let is_focused = *app.focused_pane() == FocusedPane::Right;
+    let border_style = if is_focused {
+        Style::default().fg(BORDER_FOCUSED)
+    } else {
+        Style::default().fg(BORDER)
+    };
+
+    let view_title = match app.right_pane_view() {
+        RightPaneView::TaskList => "任务",
+        RightPaneView::TaskDetail => "详情",
+        RightPaneView::TaskForm => "表单",
+        RightPaneView::Help => "帮助",
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(
+            format!(" {view_title} "),
+            Style::default().fg(if is_focused { ACCENT } else { MUTED }),
+        ));
+    f.render_widget(&block, area);
+    let inner_area = block.inner(area);
+
+    match app.right_pane_view() {
+        RightPaneView::TaskList => draw_right_task_list(f, inner_area, app, is_focused),
+        RightPaneView::TaskDetail => draw_right_task_detail(f, inner_area, app, is_focused),
+        RightPaneView::TaskForm => draw_right_task_form(f, inner_area, app, is_focused),
+        RightPaneView::Help => draw_help(f, inner_area, app, is_focused),
+    }
+}
+
+/// 右栏 - 任务列表视图。
+fn draw_right_task_list(f: &mut Frame, area: Rect, app: &App, _is_focused: bool) {
     use ratatui::style::Color;
 
     let tasks = app.filtered_and_sorted_tasks();
@@ -241,24 +293,17 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
                 Line::from(""),
                 Line::styled(
                     "  没有匹配的任务",
-                    Style::default()
-                        .fg(MUTED)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
-                Line::styled(
-                    "  按 Esc 清除搜索过滤",
-                    Style::default().fg(MUTED),
-                ),
+                Line::styled("  按 Esc 清除搜索过滤", Style::default().fg(MUTED)),
             ]
         } else {
             vec![
                 Line::from(""),
                 Line::styled(
                     "  暂无任务",
-                    Style::default()
-                        .fg(MUTED)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
                 Line::styled(
@@ -297,7 +342,11 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
         let task = tasks[i];
         let is_selected = i == selected;
 
-        let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
+        let marker = if is_selected {
+            ICON_SELECTED
+        } else {
+            ICON_UNSELECTED
+        };
         let id_short = &task.id[..task.id.len().min(8)];
 
         // 进度
@@ -351,20 +400,24 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
         // 附加进度条 spans（需要单独添加以保留颜色）
         let bar_spans = progress_bar_spans(progress_pct, 6);
         for span in bar_spans {
-        let styled = if is_selected {
-        let fg = span.style.fg.unwrap_or(Color::Green);
-        Span::styled(span.content, Style::default().fg(fg).bg(Color::Indexed(236)))
-        } else {
-        span
-        };
-        lines.last_mut().unwrap().spans.push(styled);
+            let styled = if is_selected {
+                let fg = span.style.fg.unwrap_or(Color::Green);
+                Span::styled(
+                    span.content,
+                    Style::default().fg(fg).bg(Color::Indexed(236)),
+                )
+            } else {
+                span
+            };
+            lines.last_mut().unwrap().spans.push(styled);
         }
 
         lines.last_mut().unwrap().spans.push(Span::raw(" "));
-        lines.last_mut().unwrap().spans.push(Span::styled(
-            format!("{priority_str:<6}"),
-            priority_style,
-        ));
+        lines
+            .last_mut()
+            .unwrap()
+            .spans
+            .push(Span::styled(format!("{priority_str:<6}"), priority_style));
     }
 
     // 底部信息
@@ -389,9 +442,8 @@ fn draw_task_list(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(paragraph, area);
 }
 
-// ── 任务详情视图 ───────────────────────────────────────────────────────────
-
-fn draw_task_detail(f: &mut Frame, area: Rect, app: &App) {
+/// 右栏 - 任务详情视图。
+fn draw_right_task_detail(f: &mut Frame, area: Rect, app: &App, _is_focused: bool) {
     if let Some(task) = app.current_task() {
         let widget = task_detail::TaskDetail::new(task, app.selected_item_index());
         f.render_widget(widget, area);
@@ -469,16 +521,12 @@ fn draw_input_overlay(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(paragraph, dialog_area);
 }
 
-// ── 任务表单视图 ───────────────────────────────────────────────────────────
-
-fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
+/// 右栏 - 任务表单视图。
+fn draw_right_task_form(f: &mut Frame, area: Rect, app: &App, _is_focused: bool) {
     let Some(form) = app.form_state() else {
         let content = vec![
             Line::from(""),
-            Line::styled(
-                "  表单状态异常",
-                Style::default().fg(Color::Red),
-            ),
+            Line::styled("  表单状态异常", Style::default().fg(Color::Red)),
         ];
         let paragraph = Paragraph::new(content);
         f.render_widget(paragraph, area);
@@ -495,7 +543,10 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
 
     let total_width = area.width as usize;
     let label_width = 10;
-    let field_width = total_width.saturating_sub(label_width).saturating_sub(6).max(20);
+    let field_width = total_width
+        .saturating_sub(label_width)
+        .saturating_sub(6)
+        .max(20);
 
     let fields = [
         (
@@ -534,14 +585,68 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
 
         // 标签样式
         let label_style = if *focused {
-            Style::default()
-                .fg(ACCENT)
-                .add_modifier(Modifier::BOLD)
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(MUTED)
         };
 
-        // 值样式
+        let marker = if *focused {
+            ICON_SELECTED
+        } else {
+            ICON_UNSELECTED
+        };
+
+        // 优先级字段：枚举选择器样式
+        if *field == FormField::Priority {
+            let current = value.trim().to_lowercase();
+            if *focused {
+                // 聚焦时显示所有选项，当前值高亮
+                let mut spans: Vec<Span> = vec![
+                    Span::styled(format!("  {marker} "), label_style),
+                    Span::styled(format!("{label}: "), label_style),
+                ];
+                let options: &[(&str, &str)] = &[
+                    ("—", ""),
+                    ("low", "low"),
+                    ("medium", "medium"),
+                    ("high", "high"),
+                ];
+                for (i, (display, val)) in options.iter().enumerate() {
+                    if i > 0 {
+                        spans.push(Span::raw(" ▶ "));
+                    }
+                    let is_current = current == *val;
+                    let style = if is_current {
+                        Style::default()
+                            .fg(priority_color(val))
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(MUTED)
+                    };
+                    spans.push(Span::styled(display.to_string(), style));
+                }
+                lines.push(Line::from(spans));
+            } else {
+                // 非聚焦时显示当前值（带优先级颜色）
+                let display = if current.is_empty() {
+                    "—"
+                } else {
+                    value.as_str()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {marker} "), label_style),
+                    Span::styled(format!("{label}: "), label_style),
+                    Span::styled(
+                        display.to_owned(),
+                        Style::default().fg(priority_color(&current)),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+            continue;
+        }
+
+        // 其他字段：文本输入样式
         let value_display: String = if value.is_empty() && !focused {
             placeholder.to_owned()
         } else {
@@ -558,8 +663,6 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
         } else {
             Style::default().fg(TEXT)
         };
-
-        let marker = if *focused { ICON_SELECTED } else { ICON_UNSELECTED };
 
         lines.push(Line::from(vec![
             Span::styled(format!("  {marker} "), label_style),
@@ -618,15 +721,11 @@ fn draw_task_form(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(paragraph, area);
 }
 
-// ── 帮助视图 ───────────────────────────────────────────────────────────────
-
-fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
+/// 右栏 - 帮助视图。
+fn draw_help(f: &mut Frame, area: Rect, _app: &App, _is_focused: bool) {
     let help_text = vec![
         Line::from(""),
-        Line::styled(
-            "  全局快捷键:",
-            section_title_style(),
-        ),
+        Line::styled("  全局快捷键:", section_title_style()),
         Line::from(vec![
             Span::styled("    q / Ctrl+C", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    退出 TUI"),
@@ -636,13 +735,36 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
             Span::raw("    显示/关闭帮助"),
         ]),
         Line::from(""),
-        Line::styled(
-            "  任务列表视图:",
-            section_title_style(),
-        ),
+        Line::styled("  左栏（项目列表）:", section_title_style()),
         Line::from(vec![
             Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    上下移动选中"),
+            Span::raw("    上下移动项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    →/Enter  ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    切换到右栏"),
+        ]),
+        Line::from(vec![
+            Span::styled("    n        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    新建项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    e        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    编辑选中项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    删除选中项目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    r        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    刷新项目列表"),
+        ]),
+        Line::from(""),
+        Line::styled("  右栏 - 任务列表:", section_title_style()),
+        Line::from(vec![
+            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    上下移动任务"),
         ]),
         Line::from(vec![
             Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
@@ -650,11 +772,15 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         ]),
         Line::from(vec![
             Span::styled("    n        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    新建任务"),
+            Span::raw("    新建任务（自动关联项目）"),
         ]),
         Line::from(vec![
             Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    删除选中任务"),
+        ]),
+        Line::from(vec![
+            Span::styled("    ←/Esc    ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    切回左栏"),
         ]),
         Line::from(vec![
             Span::styled("    r/Ctrl+R ", Style::default().fg(HIGHLIGHT_FG)),
@@ -668,69 +794,8 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
             Span::styled("    Tab      ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    切换排序方式"),
         ]),
-        Line::from(vec![
-            Span::styled("    Home/End ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    跳转到首/末"),
-        ]),
         Line::from(""),
-        Line::styled(
-            "  项目列表视图:",
-            section_title_style(),
-        ),
-        Line::from(vec![
-            Span::styled("    p        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    从任务列表进入项目列表"),
-        ]),
-        Line::from(vec![
-            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    上下移动选中"),
-        ]),
-        Line::from(vec![
-            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    查看项目详情"),
-        ]),
-        Line::from(vec![
-            Span::styled("    n        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    新建项目"),
-        ]),
-        Line::from(vec![
-            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    删除选中项目"),
-        ]),
-        Line::from(vec![
-            Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    返回任务列表"),
-        ]),
-        Line::from(""),
-        Line::styled(
-            "  项目详情视图:",
-            section_title_style(),
-        ),
-        Line::from(vec![
-            Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    上下移动关联任务"),
-        ]),
-        Line::from(vec![
-            Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    查看关联任务详情"),
-        ]),
-        Line::from(vec![
-            Span::styled("    E        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    编辑项目"),
-        ]),
-        Line::from(vec![
-            Span::styled("    d        ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    删除项目"),
-        ]),
-        Line::from(vec![
-            Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    返回项目列表"),
-        ]),
-        Line::from(""),
-        Line::styled(
-            "  任务详情视图:",
-            section_title_style(),
-        ),
+        Line::styled("  右栏 - 任务详情:", section_title_style()),
         Line::from(vec![
             Span::styled("    ↑/j/k/↓  ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    上下移动条目"),
@@ -742,6 +807,14 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         Line::from(vec![
             Span::styled("    a        ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    添加清单条目"),
+        ]),
+        Line::from(vec![
+            Span::styled("    e        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    编辑条目名称"),
+        ]),
+        Line::from(vec![
+            Span::styled("    E        ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    编辑任务"),
         ]),
         Line::from(vec![
             Span::styled("    N        ", Style::default().fg(HIGHLIGHT_FG)),
@@ -760,25 +833,22 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
             Span::raw("    删除当前任务（需确认）"),
         ]),
         Line::from(vec![
-            Span::styled("    Esc/←    ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::styled("    Ctrl+J/K ", Style::default().fg(HIGHLIGHT_FG)),
+            Span::raw("    移动条目顺序"),
+        ]),
+        Line::from(vec![
+            Span::styled("    ←/Esc    ", Style::default().fg(HIGHLIGHT_FG)),
             Span::raw("    返回任务列表"),
         ]),
         Line::from(""),
-        Line::styled(
-            "  任务表单视图:",
-            section_title_style(),
-        ),
+        Line::styled("  表单视图:", section_title_style()),
         Line::from(vec![
             Span::styled("    Tab      ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    切换到下一个字段"),
-        ]),
-        Line::from(vec![
-            Span::styled("    Shift+Tab", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("切换到上一个字段"),
+            Span::raw("    切换字段"),
         ]),
         Line::from(vec![
             Span::styled("    Enter    ", Style::default().fg(HIGHLIGHT_FG)),
-            Span::raw("    提交表单（新建/保存）"),
+            Span::raw("    提交表单"),
         ]),
         Line::from(vec![
             Span::styled("    Esc      ", Style::default().fg(HIGHLIGHT_FG)),
@@ -786,10 +856,8 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
         ]),
         Line::from(""),
         Line::styled(
-            "  按 Esc 或 ? 返回上一视图",
-            Style::default()
-                .fg(MUTED)
-                .add_modifier(Modifier::ITALIC),
+            "  按 Esc 或 ? 返回",
+            Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
         ),
     ];
 
@@ -806,7 +874,8 @@ fn draw_help(f: &mut Frame, area: Rect, _app: &App) {
 
 // ── 删除确认对话框 ─────────────────────────────────────────────────────────
 
-fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
+/// 通用确认对话框（居中弹出，黑色背景，红色边框）。
+fn draw_confirm_dialog(f: &mut Frame, area: Rect, title: &str, message: &str, detail: &str) {
     let width = 50.min(area.width.saturating_sub(4));
     let height = 6;
     let x = area.x + (area.width.saturating_sub(width)) / 2;
@@ -815,7 +884,49 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
 
     f.render_widget(Clear, dialog_area);
 
-    let task_name = app
+    let lines = vec![
+        Line::from(""),
+        Line::styled(
+            format!("  {message}"),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Line::from(format!("  {detail}")),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  y",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" 确认  "),
+            Span::styled(
+                "n/Esc",
+                Style::default()
+                    .fg(HIGHLIGHT_FG)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" 取消"),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(BORDER_DANGER))
+                .title(Span::styled(
+                    format!(" {ICON_WARN} {title} "),
+                    Style::default().fg(Color::Red),
+                )),
+        )
+        .style(Style::default().bg(Color::Black));
+
+    f.render_widget(paragraph, dialog_area);
+}
+
+fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
+    let detail = app
         .current_task()
         .map(|t| truncate_str(&t.task_description, 30))
         .or_else(|| {
@@ -824,165 +935,63 @@ fn draw_delete_confirm(f: &mut Frame, area: Rect, app: &App) {
                 .map(|t| truncate_str(&t.task_description, 30))
         })
         .unwrap_or_default();
-
-    let lines = vec![
-        Line::from(""),
-        Line::styled(
-            "  确认删除此任务？",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::from(format!("  {task_name}")),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                "  y",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 确认  "),
-            Span::styled(
-                "n/Esc",
-                Style::default()
-                    .fg(HIGHLIGHT_FG)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 取消"),
-        ]),
-    ];
-
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(BORDER_DANGER))
-            .title(Span::styled(
-                format!(" {} 删除确认 ", ICON_WARN),
-                Style::default().fg(Color::Red),
-            )),
-    );
-
-    f.render_widget(paragraph, dialog_area);
+    draw_confirm_dialog(f, area, "删除确认", "确认删除此任务？", &detail);
 }
 
 // ── 笔记删除确认对话框 ─────────────────────────────────────────────────────
 
 fn draw_delete_note_confirm(f: &mut Frame, area: Rect, app: &App) {
-    let width = 50.min(area.width.saturating_sub(4));
-    let height = 6;
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
-    let dialog_area = Rect::new(x, y, width, height);
-
-    f.render_widget(Clear, dialog_area);
-
-    let note_preview = app
+    let detail = app
         .current_task()
         .and_then(|t| t.notes.get(app.selected_note_index()))
         .map(|n| truncate_str(n, 30))
         .unwrap_or_default();
-
-    let lines = vec![
-        Line::from(""),
-        Line::styled(
-            "  确认删除此笔记？",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::from(format!("  {note_preview}")),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                "  y",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 确认  "),
-            Span::styled(
-                "n/Esc",
-                Style::default()
-                    .fg(HIGHLIGHT_FG)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 取消"),
-        ]),
-    ];
-
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(BORDER_DANGER))
-            .title(Span::styled(
-                format!(" {} 删除笔记 ", ICON_WARN),
-                Style::default().fg(Color::Red),
-            )),
-    );
-
-    f.render_widget(paragraph, dialog_area);
+    draw_confirm_dialog(f, area, "删除笔记", "确认删除此笔记？", &detail);
 }
 
-// ── 项目列表视图 ───────────────────────────────────────────────────────────
+// ── 覆盖层渲染 ─────────────────────────────────────────────────────────────
 
-fn draw_project_list(f: &mut Frame, area: Rect, app: &App) {
-    let widget = project_list::ProjectList::new(app.projects(), app.project_selected_index());
-    f.render_widget(widget, area);
-}
-
-// ── 项目详情视图 ─────────────────────────────────────────────────────────────
-
-fn draw_project_detail(f: &mut Frame, area: Rect, app: &App) {
-    if let Some(project) = app.current_project() {
-        let widget = project_detail::ProjectDetail::new(
-            project,
-            app.project_tasks(),
-            app.project_task_selected_index(),
-        );
-        f.render_widget(widget, area);
-    } else {
-        let content = vec![
-            Line::from(""),
-            Line::styled("  正在加载项目详情...", Style::default().fg(MUTED)),
-        ];
-        let paragraph = Paragraph::new(content).wrap(Wrap { trim: true });
-        f.render_widget(paragraph, area);
+/// 渲染所有覆盖层（全屏区域之上）。
+fn draw_overlays(f: &mut Frame, area: Rect, app: &App) {
+    match app.overlay() {
+        Overlay::None => {}
+        Overlay::ProjectForm(_) => {
+            if let Some(form) = app.project_form_state() {
+                draw_project_form_overlay(f, area, form);
+            }
+        }
+        Overlay::DeleteProject => {
+            draw_delete_project_confirm(f, area, app);
+        }
+        Overlay::DeleteTask => {
+            draw_delete_confirm(f, area, app);
+        }
+        Overlay::DeleteNote => {
+            draw_delete_note_confirm(f, area, app);
+        }
+        Overlay::Input(_) => {
+            // 输入覆盖层在 draw_right_task_detail 中处理
+        }
     }
 }
 
-// ── 项目表单视图 ─────────────────────────────────────────────────────────────
-
-fn draw_project_form(f: &mut Frame, area: Rect, app: &App) {
-    let Some(form) = app.project_form_state() else {
-        let content = vec![
-            Line::from(""),
-            Line::styled(
-                "  表单状态异常",
-                Style::default().fg(Color::Red),
-            ),
-        ];
-        let paragraph = Paragraph::new(content);
-        f.render_widget(paragraph, area);
-        return;
-    };
-
-    let widget = project_form::ProjectForm::new(form);
-    f.render_widget(widget, area);
-}
-
-// ── 项目删除确认对话框 ───────────────────────────────────────────────────────
-
-fn draw_delete_project_confirm(f: &mut Frame, area: Rect, app: &App) {
-    let width = 50.min(area.width.saturating_sub(4));
-    let height = 6;
+/// 项目表单覆盖层（居中弹出）。
+fn draw_project_form_overlay(f: &mut Frame, area: Rect, form: &super::app::ProjectFormState) {
+    let width = 60.min(area.width.saturating_sub(4));
+    let height = 10;
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
     let dialog_area = Rect::new(x, y, width, height);
 
     f.render_widget(Clear, dialog_area);
 
-    let project_name = app
+    let widget = project_form::ProjectForm::new(form);
+    f.render_widget(widget, dialog_area);
+}
+
+/// 项目删除确认对话框。
+fn draw_delete_project_confirm(f: &mut Frame, area: Rect, app: &App) {
+    let detail = app
         .current_project()
         .map(|p| truncate_str(&p.name, 30))
         .or_else(|| {
@@ -991,46 +1000,7 @@ fn draw_delete_project_confirm(f: &mut Frame, area: Rect, app: &App) {
                 .map(|p| truncate_str(&p.name, 30))
         })
         .unwrap_or_default();
-
-    let lines = vec![
-        Line::from(""),
-        Line::styled(
-            "  确认删除此项目？",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Line::from(format!("  {project_name}")),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                "  y",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 确认  "),
-            Span::styled(
-                "n/Esc",
-                Style::default()
-                    .fg(HIGHLIGHT_FG)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" 取消"),
-        ]),
-    ];
-
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(BORDER_DANGER))
-            .title(Span::styled(
-                format!(" {} 删除确认 ", ICON_WARN),
-                Style::default().fg(Color::Red),
-            )),
-    );
-
-    f.render_widget(paragraph, dialog_area);
+    draw_confirm_dialog(f, area, "删除确认", "确认删除此项目？", &detail);
 }
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────

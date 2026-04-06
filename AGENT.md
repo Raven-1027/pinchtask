@@ -61,12 +61,11 @@ pinchtask/
 │   │   ├── app.rs           # 应用状态管理、事件处理
 │   │   ├── event.rs         # 事件定义与异步事件总线
 │   │   └── ui/              # 渲染模块
-│   │       ├── mod.rs       #   主渲染入口
+│   │       ├── mod.rs       #   主渲染入口（左右分栏布局）
 │   │       ├── task_detail.rs #   任务详情渲染
 │   │       ├── task_list.rs   #   任务列表渲染
-│   │       ├── project_detail.rs # 项目详情渲染
-│   │       ├── project_form.rs   # 项目创建/编辑表单
-│   │       ├── project_list.rs   # 项目列表渲染
+│   │       ├── project_form.rs   # 项目创建/编辑表单（覆盖层弹出）
+│   │       ├── project_list.rs   # 项目列表渲染（左栏窄列）
 │   │       └── theme.rs       #   视觉主题（配色、图标、进度条）
 │   └── cli/                 # CLI 命令处理
 │       ├── mod.rs           # 顶层参数解析与嵌套子命令分发

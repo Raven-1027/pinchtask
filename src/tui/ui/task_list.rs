@@ -83,9 +83,7 @@ impl<'a> Widget for TaskList<'a> {
                 Line::from(""),
                 Line::styled(
                     "  暂无任务",
-                    Style::default()
-                        .fg(MUTED)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(MUTED).add_modifier(Modifier::ITALIC),
                 ),
                 Line::from(""),
                 Line::styled(
@@ -118,25 +116,30 @@ impl<'a> Widget for TaskList<'a> {
             Span::styled("  # ", header_style()),
             Span::styled(format!("{:<9}", "ID"), header_style()),
             Span::styled(format!("{:<w$}", "描述", w = desc_width), header_style()),
-            Span::styled(format!("{:<w$}", "进度", w = PROGRESS_WIDTH), header_style()),
-            Span::styled(format!("{:<w$}", "优先级", w = PRIORITY_WIDTH), header_style()),
+            Span::styled(
+                format!("{:<w$}", "进度", w = PROGRESS_WIDTH),
+                header_style(),
+            ),
+            Span::styled(
+                format!("{:<w$}", "优先级", w = PRIORITY_WIDTH),
+                header_style(),
+            ),
             Span::styled(format!("{:<w$}", "时间", w = TIME_WIDTH), header_style()),
         ]));
 
         lines.push(Line::from(separator(total_width.saturating_sub(2))));
 
         // ── 任务行 ─────────────────────────────────────────────────────
-        let visible_tasks = self
-            .tasks
-            .iter()
-            .enumerate()
-            .skip(scroll)
-            .take(usable_rows);
+        let visible_tasks = self.tasks.iter().enumerate().skip(scroll).take(usable_rows);
 
         for (i, task) in visible_tasks {
             let is_selected = i == self.selected_index;
 
-            let marker = if is_selected { ICON_SELECTED } else { ICON_UNSELECTED };
+            let marker = if is_selected {
+                ICON_SELECTED
+            } else {
+                ICON_UNSELECTED
+            };
             let id_short = &task.id[..task.id.len().min(8)];
 
             let done_count = task.checklist.iter().filter(|item| item.done).count();
@@ -172,11 +175,25 @@ impl<'a> Widget for TaskList<'a> {
                 Span::styled(format!(" {marker} "), row_style),
                 Span::styled(format!("{id_short:<9}"), row_style),
                 Span::styled(
-                    format!("{:<w$}", truncate_str(&task.task_description, desc_width), w = desc_width),
+                    format!(
+                        "{:<w$}",
+                        truncate_str(&task.task_description, desc_width),
+                        w = desc_width
+                    ),
                     row_style,
                 ),
-                Span::styled(format!("{:<w$}", format!("{done_count}/{total}"), w = PROGRESS_WIDTH), row_style),
-                Span::styled(format!("{:<w$}", priority_text, w = PRIORITY_WIDTH), p_style),
+                Span::styled(
+                    format!(
+                        "{:<w$}",
+                        format!("{done_count}/{total}"),
+                        w = PROGRESS_WIDTH
+                    ),
+                    row_style,
+                ),
+                Span::styled(
+                    format!("{:<w$}", priority_text, w = PRIORITY_WIDTH),
+                    p_style,
+                ),
                 Span::styled(time_short, row_style),
             ]));
         }
@@ -244,6 +261,7 @@ mod tests {
                 notes: vec![],
                 resources: vec![],
                 metadata: None,
+                project_id: None,
                 created_at: format!("2026-04-{i:02}T00:00:00Z"),
                 updated_at: format!("2026-04-{i:02}T00:00:00Z"),
             })
@@ -263,6 +281,7 @@ mod tests {
                 notes: vec![],
                 resources: vec![],
                 metadata: None,
+                project_id: None,
                 created_at: format!("2026-04-{i:02}T00:00:00Z"),
                 updated_at: format!("2026-04-{i:02}T00:00:00Z"),
             })

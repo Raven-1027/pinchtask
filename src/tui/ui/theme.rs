@@ -48,7 +48,7 @@ pub const ICON_PRIORITY_LOW: &str = "○";
 pub const TITLE_BG: Color = Color::DarkGray;
 
 /// 默认边框色（非焦点）。
-pub const BORDER: Color = Color::DarkGray;
+pub const BORDER: Color = Color::White;
 /// 焦点边框色。
 pub const BORDER_FOCUSED: Color = Color::Cyan;
 /// 危险操作边框色。

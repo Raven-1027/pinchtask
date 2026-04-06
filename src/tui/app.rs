@@ -99,7 +99,7 @@ impl FormField {
         match self {
             FormField::Description => "输入任务描述...",
             FormField::Context => "输入共享上下文（可选）...",
-            FormField::Priority => "high / medium / low（留空表示无优先级）",
+            FormField::Priority => "Space/←/→ 切换: - / low / medium / high",
             FormField::Tags => "逗号分隔，如: 重要, v2",
             FormField::Eta => "如: 2h, P3D, 2025-12-31",
         }
@@ -218,23 +218,43 @@ impl TaskFormState {
 
 // ── 视图枚举 ───────────────────────────────────────────────────────────────
 
-/// TUI 当前激活的视图。
+/// 焦点面板。
 #[derive(Debug, Clone, PartialEq)]
-pub enum View {
-    /// 任务列表视图
+pub enum FocusedPane {
+    /// 左栏 - 项目列表
+    Left,
+    /// 右栏 - 任务列表/详情/表单/帮助
+    Right,
+}
+
+/// 右栏子视图。
+#[derive(Debug, Clone, PartialEq)]
+pub enum RightPaneView {
+    /// 任务列表
     TaskList,
-    /// 任务详情视图（显示选定任务的完整信息）
+    /// 任务详情
     TaskDetail,
-    /// 任务创建/编辑表单
+    /// 任务表单（创建/编辑）
     TaskForm,
-    /// 帮助面板
+    /// 帮助
     Help,
-    /// 项目列表视图
-    ProjectList,
-    /// 项目详情视图
-    ProjectDetail,
-    /// 项目创建/编辑表单
-    ProjectForm,
+}
+
+/// 覆盖层（渲染在分栏之上）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Overlay {
+    /// 无覆盖层
+    None,
+    /// 项目表单（创建/编辑）
+    ProjectForm(ProjectFormMode),
+    /// 删除项目确认
+    DeleteProject,
+    /// 删除任务确认
+    DeleteTask,
+    /// 删除笔记确认
+    DeleteNote,
+    /// 行内输入
+    Input(InputMode),
 }
 
 // ── 项目表单字段 ───────────────────────────────────────────────────────────
@@ -410,10 +430,14 @@ impl SortMode {
 pub struct App {
     /// 数据存储目录（由 CLI -D 参数传入）
     data_dir: Option<PathBuf>,
-    /// 当前激活视图
-    view: View,
-    /// 进入帮助视图前的上一个视图（用于 Esc 返回）
-    previous_view: View,
+    /// 焦点面板
+    focused_pane: FocusedPane,
+    /// 右栏子视图
+    right_pane_view: RightPaneView,
+    /// 进入帮助前的右栏视图（用于 Esc 返回）
+    previous_right_pane_view: RightPaneView,
+    /// 覆盖层状态
+    overlay: Overlay,
     /// 任务存储实例（延迟初始化）
     store: Option<TaskStore>,
 
@@ -435,21 +459,13 @@ pub struct App {
     /// 是否处于搜索输入模式
     search_mode: bool,
 
-    // ── 模态对话框 ────────────────────────────────────────────────────
-    /// 是否显示删除任务确认对话框
-    confirm_delete: bool,
-    /// 是否显示删除笔记确认对话框
-    confirm_delete_note: bool,
-    /// 待删除的笔记索引
-    selected_note_index: usize,
-
     // ── 清单交互状态 ────────────────────────────────────────────────
     /// 清单条目当前焦点索引
     selected_item_index: usize,
-    /// 输入模式
-    input_mode: InputMode,
     /// 行内输入缓冲区
     input_buffer: String,
+    /// 待删除的笔记索引
+    selected_note_index: usize,
 
     // ── 任务表单状态 ──────────────────────────────────────────────────
     /// 当前表单状态（进入 TaskForm 视图时创建）
@@ -462,16 +478,10 @@ pub struct App {
     project_selected_index: usize,
     /// 项目列表滚动偏移
     project_scroll_offset: usize,
-    /// 当前查看详情的项目
-    current_project: Option<Project>,
     /// 当前项目关联的任务列表
     project_tasks: Vec<Task>,
-    /// 项目详情中关联任务选中索引
-    project_task_selected_index: usize,
     /// 项目表单状态
     project_form_state: Option<ProjectFormState>,
-    /// 是否显示项目删除确认
-    confirm_delete_project: bool,
 
     // ── 资源输入缓冲 ──────────────────────────────────────────────────
     /// 添加资源时暂存名称（AddingResourceName 完成后保存，AddingResourceUrl 完成后使用）
@@ -495,8 +505,10 @@ impl App {
     pub fn new(data_dir: Option<PathBuf>) -> Self {
         Self {
             data_dir,
-            view: View::TaskList,
-            previous_view: View::TaskList,
+            focused_pane: FocusedPane::Left,
+            right_pane_view: RightPaneView::TaskList,
+            previous_right_pane_view: RightPaneView::TaskList,
+            overlay: Overlay::None,
             store: None,
             tasks: Vec::new(),
             selected_index: 0,
@@ -505,21 +517,15 @@ impl App {
             sort_mode: SortMode::Created,
             search_query: None,
             search_mode: false,
-            confirm_delete: false,
-            confirm_delete_note: false,
             selected_note_index: 0,
             selected_item_index: 0,
-            input_mode: InputMode::Normal,
             input_buffer: String::new(),
             form_state: None,
             projects: Vec::new(),
             project_selected_index: 0,
             project_scroll_offset: 0,
-            current_project: None,
             project_tasks: Vec::new(),
-            project_task_selected_index: 0,
             project_form_state: None,
-            confirm_delete_project: false,
             resource_name_buffer: String::new(),
             should_quit: false,
             message: None,
@@ -530,9 +536,19 @@ impl App {
 
     // ── 访问器 ────────────────────────────────────────────────────────────
 
-    /// 获取当前视图。
-    pub fn view(&self) -> &View {
-        &self.view
+    /// 获取焦点面板。
+    pub fn focused_pane(&self) -> &FocusedPane {
+        &self.focused_pane
+    }
+
+    /// 获取右栏子视图。
+    pub fn right_pane_view(&self) -> &RightPaneView {
+        &self.right_pane_view
+    }
+
+    /// 获取覆盖层状态。
+    pub fn overlay(&self) -> &Overlay {
+        &self.overlay
     }
 
     /// 是否应该退出主循环。
@@ -580,10 +596,7 @@ impl App {
         self.search_mode
     }
 
-    /// 是否显示删除确认对话框。
-    pub fn confirm_delete(&self) -> bool {
-        self.confirm_delete
-    }
+
 
     /// 获取滚动偏移量。
     pub fn scroll_offset(&self) -> usize {
@@ -595,10 +608,7 @@ impl App {
         self.selected_item_index
     }
 
-    /// 获取当前输入模式。
-    pub fn input_mode(&self) -> &InputMode {
-        &self.input_mode
-    }
+
 
     /// 获取输入缓冲区内容。
     pub fn input_buffer(&self) -> &str {
@@ -625,34 +635,25 @@ impl App {
         self.project_scroll_offset
     }
 
-    /// 获取当前查看详情的项目。
-    pub fn current_project(&self) -> Option<&Project> {
-        self.current_project.as_ref()
-    }
+
 
     /// 获取项目关联任务列表。
     pub fn project_tasks(&self) -> &[Task] {
         &self.project_tasks
     }
 
-    /// 获取项目关联任务选中索引。
-    pub fn project_task_selected_index(&self) -> usize {
-        self.project_task_selected_index
-    }
+
 
     /// 获取项目表单状态引用。
     pub fn project_form_state(&self) -> Option<&ProjectFormState> {
         self.project_form_state.as_ref()
     }
 
-    /// 是否显示项目删除确认对话框。
-    pub fn confirm_delete_project(&self) -> bool {
-        self.confirm_delete_project
-    }
 
-    /// 是否显示删除笔记确认对话框。
-    pub fn confirm_delete_note(&self) -> bool {
-        self.confirm_delete_note
+
+    /// 是否有活跃的覆盖层。
+    pub fn is_overlay_active(&self) -> bool {
+        self.overlay != Overlay::None
     }
 
     /// 获取待删除的笔记索引。
@@ -667,22 +668,75 @@ impl App {
         self.action_tx = Some(tx);
     }
 
-    // ── 视图切换 ──────────────────────────────────────────────────────────
+    // ── 状态切换 ──────────────────────────────────────────────────────────
 
-    /// 切换到指定视图。
-    pub fn set_view(&mut self, view: View) {
-        self.view = view;
+    /// 设置焦点面板。
+    pub fn set_focused_pane(&mut self, pane: FocusedPane) {
+        self.focused_pane = pane;
+    }
+
+    /// 设置右栏子视图。
+    pub fn set_right_pane_view(&mut self, view: RightPaneView) {
+        self.right_pane_view = view;
     }
 
     /// 切换到帮助视图（记录来源视图以便返回）。
     fn show_help(&mut self) {
-        if self.view != View::Help {
-            self.previous_view = self.view.clone();
-            self.view = View::Help;
+        if self.right_pane_view != RightPaneView::Help {
+            self.previous_right_pane_view = self.right_pane_view.clone();
+            self.right_pane_view = RightPaneView::Help;
+            self.focused_pane = FocusedPane::Right;
         } else {
             // 已经在帮助视图，返回上一个视图
-            self.view = self.previous_view.clone();
+            self.right_pane_view = self.previous_right_pane_view.clone();
         }
+    }
+
+    /// 关闭帮助视图（返回上一个右栏视图）。
+    fn close_help(&mut self) {
+        if self.right_pane_view == RightPaneView::Help {
+            self.right_pane_view = self.previous_right_pane_view.clone();
+        }
+    }
+
+    /// 设置覆盖层。
+    #[allow(dead_code)]
+    fn set_overlay(&mut self, overlay: Overlay) {
+        self.overlay = overlay;
+    }
+
+    /// 关闭覆盖层。
+    #[allow(dead_code)]
+    fn close_overlay(&mut self) {
+        self.overlay = Overlay::None;
+    }
+
+    /// 获取当前输入模式（从覆盖层中提取，若无则返回 Normal）。
+    pub fn input_mode(&self) -> &InputMode {
+        match &self.overlay {
+            Overlay::Input(mode) => mode,
+            _ => &InputMode::Normal,
+        }
+    }
+
+    /// 是否显示删除任务确认对话框。
+    pub fn confirm_delete(&self) -> bool {
+        matches!(self.overlay, Overlay::DeleteTask)
+    }
+
+    /// 是否显示删除笔记确认对话框。
+    pub fn confirm_delete_note(&self) -> bool {
+        matches!(self.overlay, Overlay::DeleteNote)
+    }
+
+    /// 是否显示项目删除确认对话框。
+    pub fn confirm_delete_project(&self) -> bool {
+        matches!(self.overlay, Overlay::DeleteProject)
+    }
+
+    /// 获取当前选中的项目（从项目列表中获取）。
+    pub fn current_project(&self) -> Option<&Project> {
+        self.projects.get(self.project_selected_index)
     }
 
     // ── 存储初始化 ────────────────────────────────────────────────────────
@@ -799,11 +853,12 @@ impl App {
 
     // ── 排序与过滤 ──────────────────────────────────────────────────────
 
-    /// 获取过滤并排序后的任务列表。
+    /// 获取过滤并排序后的任务列表（右栏当前项目的任务）。
     ///
     /// 先按 search_query 过滤，再按 sort_mode 排序。
+    /// 在分栏布局下，始终使用 `project_tasks`（当前选中项目的任务）。
     pub fn filtered_and_sorted_tasks(&self) -> Vec<&Task> {
-        let mut result: Vec<&Task> = self.tasks.iter().collect();
+        let mut result: Vec<&Task> = self.project_tasks.iter().collect();
 
         // 搜索过滤
         if let Some(query) = &self.search_query {
@@ -879,6 +934,9 @@ impl App {
     fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
         use crossterm::event::{KeyCode, KeyModifiers};
 
+        // 按键后清除临时消息，恢复键位提示
+        self.message = None;
+
         // Ctrl+C 全局退出
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.quit();
@@ -890,108 +948,252 @@ impl App {
             return self.handle_search_key(key);
         }
 
+        // 覆盖层优先处理
+        match &self.overlay {
+            Overlay::None => {}
+            Overlay::ProjectForm(_) => {
+                self.handle_project_form_key(key);
+                return Ok(());
+            }
+            Overlay::DeleteProject => {
+                self.handle_delete_project_confirm_key(key);
+                return Ok(());
+            }
+            Overlay::DeleteTask => {
+                self.handle_delete_confirm_key(key);
+                return Ok(());
+            }
+            Overlay::DeleteNote => {
+                self.handle_delete_note_confirm_key(key);
+                return Ok(());
+            }
+            Overlay::Input(_) => {
+                self.handle_input_key(key);
+                return Ok(());
+            }
+        }
+
         match key.code {
             KeyCode::Char('q') => {
-                // TaskForm / ProjectForm 视图中 q 键作为普通输入
-                if self.view == View::TaskForm || self.view == View::ProjectForm {
-                    if self.view == View::TaskForm {
-                        self.handle_task_form_key(key);
-                    } else {
-                        self.handle_project_form_key(key);
-                    }
+                // 任务表单中 q 键作为普通输入
+                if self.right_pane_view == RightPaneView::TaskForm {
+                    self.handle_task_form_key(key);
                     return Ok(());
                 }
-                if self.view == View::Help {
-                    self.view = self.previous_view.clone();
-                } else if self.confirm_delete {
-                    self.confirm_delete = false;
-                } else if self.confirm_delete_note {
-                    self.confirm_delete_note = false;
-                } else if self.confirm_delete_project {
-                    self.confirm_delete_project = false;
+                if self.right_pane_view == RightPaneView::Help {
+                    self.close_help();
                 } else {
                     self.quit();
                 }
             }
             KeyCode::Char('?') => {
-                // TaskForm / ProjectForm 视图中 ? 键作为普通输入
-                if self.view == View::TaskForm || self.view == View::ProjectForm {
-                    if self.view == View::TaskForm {
-                        self.handle_task_form_key(key);
-                    } else {
-                        self.handle_project_form_key(key);
-                    }
+                // 任务表单中 ? 键作为普通输入
+                if self.right_pane_view == RightPaneView::TaskForm {
+                    self.handle_task_form_key(key);
                     return Ok(());
                 }
-                if !self.confirm_delete && !self.confirm_delete_project {
-                    self.show_help();
-                }
+                self.show_help();
             }
             KeyCode::Esc => {
-                // TaskForm / ProjectForm 视图中 Esc 由表单处理器处理
-                if self.view == View::TaskForm || self.view == View::ProjectForm {
-                    if self.view == View::TaskForm {
-                        self.handle_task_form_key(key);
-                    } else {
-                        self.handle_project_form_key(key);
-                    }
+                // 任务表单中 Esc 由表单处理器处理
+                if self.right_pane_view == RightPaneView::TaskForm {
+                    self.handle_task_form_key(key);
                     return Ok(());
                 }
-                if self.confirm_delete {
-                    self.confirm_delete = false;
-                } else if self.confirm_delete_note {
-                    self.confirm_delete_note = false;
-                } else if self.confirm_delete_project {
-                    self.confirm_delete_project = false;
-                } else {
-                    match self.view {
-                        View::Help => self.view = self.previous_view.clone(),
-                        View::TaskDetail => self.view = View::TaskList,
-                        View::ProjectDetail => self.view = View::ProjectList,
-                        _ => {}
-                    }
+                match self.right_pane_view {
+                    RightPaneView::Help => self.close_help(),
+                    RightPaneView::TaskDetail => self.right_pane_view = RightPaneView::TaskList,
+                    _ => {}
                 }
             }
-            _ if self.view == View::TaskList => {
-                // 删除确认对话框优先处理
-                if self.confirm_delete {
-                    self.handle_delete_confirm_key(key);
-                } else {
-                    self.handle_task_list_key(key)?;
+            _ => {}
+        }
+
+        // 按焦点面板分派
+        match self.focused_pane {
+            FocusedPane::Left => self.handle_left_pane_key(key)?,
+            FocusedPane::Right => self.handle_right_pane_key(key)?,
+        }
+
+        Ok(())
+    }
+
+    /// 左栏（项目列表）键盘处理。
+    fn handle_left_pane_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::KeyCode;
+
+        let count = self.projects.len();
+
+        match key.code {
+            // 上下移动
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.project_selected_index > 0 {
+                    self.project_selected_index -= 1;
+                    self.adjust_project_scroll();
                 }
             }
-            _ if self.view == View::TaskDetail => {
-                // 任务删除确认对话框优先处理
-                if self.confirm_delete {
-                    self.handle_delete_confirm_key(key);
-                } else if self.confirm_delete_note {
-                    self.handle_delete_note_confirm_key(key);
-                } else {
-                    match &self.input_mode {
-                        InputMode::Normal => self.handle_task_detail_key(key)?,
-                        _ => self.handle_input_key(key),
-                    }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if count > 0 && self.project_selected_index < count - 1 {
+                    self.project_selected_index += 1;
+                    self.adjust_project_scroll();
                 }
             }
-            _ if self.view == View::TaskForm => {
+            // 切换到右栏，加载选中项目的任务
+            KeyCode::Right | KeyCode::Enter => {
+                self.focused_pane = FocusedPane::Right;
+                self.spawn_load_project_tasks_for_selected_project();
+            }
+            // 新建项目
+            KeyCode::Char('n') => {
+                self.project_form_state = Some(ProjectFormState::new_create());
+                self.overlay = Overlay::ProjectForm(ProjectFormMode::Create);
+            }
+            // 编辑项目
+            KeyCode::Char('e') => {
+                if let Some(project) = self.projects.get(self.project_selected_index) {
+                    self.project_form_state = Some(ProjectFormState::new_edit(project));
+                    self.overlay = Overlay::ProjectForm(ProjectFormMode::Edit);
+                }
+            }
+            // 删除项目
+            KeyCode::Char('d') => {
+                if !self.projects.is_empty() {
+                    self.overlay = Overlay::DeleteProject;
+                }
+            }
+            // 刷新
+            KeyCode::Char('r') => {
+                self.spawn_load_projects();
+            }
+            // 帮助
+            KeyCode::Char('?') => {
+                self.show_help();
+            }
+            // Home/End 快速跳转
+            KeyCode::Home => {
+                self.project_selected_index = 0;
+                self.project_scroll_offset = 0;
+            }
+            KeyCode::End => {
+                if count > 0 {
+                    self.project_selected_index = count - 1;
+                    self.adjust_project_scroll();
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// 右栏键盘处理（按 right_pane_view 分派）。
+    fn handle_right_pane_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::KeyCode;
+
+        match self.right_pane_view {
+            RightPaneView::TaskList => {
+                // ←/Esc 切回左栏
+                if key.code == KeyCode::Left || key.code == KeyCode::Esc {
+                    self.focused_pane = FocusedPane::Left;
+                    return Ok(());
+                }
+                self.handle_right_task_list_key(key)?;
+            }
+            RightPaneView::TaskDetail => {
+                // ←/Esc 返回右栏任务列表（不是切回左栏）
+                if key.code == KeyCode::Left || key.code == KeyCode::Esc {
+                    self.right_pane_view = RightPaneView::TaskList;
+                    return Ok(());
+                }
+                self.handle_task_detail_key(key)?;
+            }
+            RightPaneView::TaskForm => {
                 self.handle_task_form_key(key);
             }
-            _ if self.view == View::ProjectList => {
-                if self.confirm_delete_project {
-                    self.handle_delete_project_confirm_key(key);
-                } else {
-                    self.handle_project_list_key(key)?;
+            RightPaneView::Help => {
+                // 已在 handle_key 中处理 Esc/? ，这里忽略其他按键
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 右栏任务列表的键盘处理。
+    fn handle_right_task_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        // Ctrl+R 刷新列表
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+            self.spawn_load_project_tasks_for_selected_project();
+            return Ok(());
+        }
+
+        let filtered_count = self.filtered_and_sorted_tasks().len();
+
+        match key.code {
+            // 上下移动
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.selected_index > 0 {
+                    self.selected_index -= 1;
+                    self.adjust_scroll();
                 }
             }
-            _ if self.view == View::ProjectDetail => {
-                if self.confirm_delete_project {
-                    self.handle_delete_project_confirm_key(key);
-                } else {
-                    self.handle_project_detail_key(key)?;
+            KeyCode::Down | KeyCode::Char('j') => {
+                if filtered_count > 0 && self.selected_index < filtered_count - 1 {
+                    self.selected_index += 1;
+                    self.adjust_scroll();
                 }
             }
-            _ if self.view == View::ProjectForm => {
-                self.handle_project_form_key(key);
+            // 查看详情
+            KeyCode::Enter => {
+                if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
+                    let task_id = task.id.clone();
+                    self.spawn_load_task_detail(task_id);
+                    self.message = Some("正在加载任务详情...".to_owned());
+                }
+            }
+            // 新建任务（自动关联当前选中项目）
+            KeyCode::Char('n') => {
+                self.form_state = Some(TaskFormState::new_create());
+                self.right_pane_view = RightPaneView::TaskForm;
+            }
+            // 删除任务
+            KeyCode::Char('d') => {
+                if !self.filtered_and_sorted_tasks().is_empty() {
+                    self.overlay = Overlay::DeleteTask;
+                }
+            }
+            // 刷新列表
+            KeyCode::Char('r') => {
+                self.spawn_load_project_tasks_for_selected_project();
+            }
+            // 切换排序方式
+            KeyCode::Tab => {
+                self.sort_mode = self.sort_mode.next();
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.message = Some(format!("排序: {}", self.sort_mode.label()));
+            }
+            // 进入搜索模式
+            KeyCode::Char('/') => {
+                self.search_mode = true;
+                self.search_query = Some(String::new());
+                self.message = Some("输入搜索关键词，Esc 取消".to_owned());
+            }
+            // 帮助
+            KeyCode::Char('?') => {
+                self.show_help();
+            }
+            // Home/End 快速跳转
+            KeyCode::Home => {
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+            }
+            KeyCode::End => {
+                if filtered_count > 0 {
+                    self.selected_index = filtered_count - 1;
+                    self.adjust_scroll();
+                }
             }
             _ => {}
         }
@@ -1033,7 +1235,7 @@ impl App {
         Ok(())
     }
 
-    /// 删除确认对话框的键盘处理。
+    /// 删除确认对话框的键盘处理（Overlay::DeleteTask）。
     fn handle_delete_confirm_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
@@ -1045,20 +1247,20 @@ impl App {
                 } else if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
                     task.id.clone()
                 } else {
-                    self.confirm_delete = false;
+                    self.overlay = Overlay::None;
                     return;
                 };
-                self.confirm_delete = false;
+                self.overlay = Overlay::None;
                 self.spawn_delete_task(task_id);
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.confirm_delete = false;
+                self.overlay = Overlay::None;
             }
             _ => {}
         }
     }
 
-    /// 笔记删除确认对话框的键盘处理。
+    /// 笔记删除确认对话框的键盘处理（Overlay::DeleteNote）。
     fn handle_delete_note_confirm_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
@@ -1067,100 +1269,18 @@ impl App {
                 if let Some(task) = &self.current_task {
                     let task_id = task.id.clone();
                     let idx = self.selected_note_index;
-                    self.confirm_delete_note = false;
+                    self.overlay = Overlay::None;
                     self.spawn_delete_note(task_id, idx);
                 }
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.confirm_delete_note = false;
+                self.overlay = Overlay::None;
             }
             _ => {}
         }
     }
 
-    /// 任务列表视图的键盘处理。
-    fn handle_task_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
-        use crossterm::event::{KeyCode, KeyModifiers};
 
-        // Ctrl+R 刷新列表
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
-            self.spawn_load_tasks();
-            return Ok(());
-        }
-
-        let filtered_count = self.filtered_and_sorted_tasks().len();
-
-        match key.code {
-            // 上下移动
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
-                    self.adjust_scroll();
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if filtered_count > 0 && self.selected_index < filtered_count - 1 {
-                    self.selected_index += 1;
-                    self.adjust_scroll();
-                }
-            }
-            // 查看详情
-            KeyCode::Enter => {
-                if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
-                    let task_id = task.id.clone();
-                    self.spawn_load_task_detail(task_id);
-                    self.message = Some("正在加载任务详情...".to_owned());
-                }
-            }
-            // 新建任务
-            KeyCode::Char('n') => {
-                self.form_state = Some(TaskFormState::new_create());
-                self.view = View::TaskForm;
-            }
-            // 删除任务（首次按下显示确认）
-            KeyCode::Char('d') => {
-                if !self.filtered_and_sorted_tasks().is_empty() {
-                    self.confirm_delete = true;
-                }
-            }
-            // 刷新列表
-            KeyCode::Char('r') => {
-                self.spawn_load_tasks();
-            }
-            // 切换到项目列表
-            KeyCode::Char('p') => {
-                self.spawn_load_projects();
-                self.view = View::ProjectList;
-            }
-            // 切换排序方式
-            KeyCode::Tab => {
-                self.sort_mode = self.sort_mode.next();
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-                self.message = Some(format!("排序: {}", self.sort_mode.label()));
-            }
-            // 进入搜索模式
-            KeyCode::Char('/') => {
-                self.search_mode = true;
-                self.search_query = Some(String::new());
-                self.message = Some("输入搜索关键词，Esc 取消".to_owned());
-            }
-            // Home/End 快速跳转
-            KeyCode::Home => {
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-            }
-            KeyCode::End => {
-                if filtered_count > 0 {
-                    self.selected_index = filtered_count - 1;
-                    self.adjust_scroll();
-                }
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
 
     /// 异步切换清单条目完成状态。
     pub fn spawn_toggle_item(&mut self, task_id: String, item_index: usize, currently_done: bool) {
@@ -1453,7 +1573,7 @@ impl App {
                 // Ctrl+D 删除当前任务
                 KeyCode::Char('d') => {
                     if self.current_task.is_some() {
-                        self.confirm_delete = true;
+                        self.overlay = Overlay::DeleteTask;
                     }
                     return Ok(());
                 }
@@ -1511,7 +1631,7 @@ impl App {
             }
             // a 键进入添加条目模式
             KeyCode::Char('a') => {
-                self.input_mode = InputMode::AddingItem;
+                self.overlay = Overlay::Input(InputMode::AddingItem);
                 self.input_buffer.clear();
                 self.message = Some("输入条目名称，Enter 确认，Esc 取消".to_owned());
             }
@@ -1519,14 +1639,14 @@ impl App {
             KeyCode::Char('E') => {
                 if let Some(task) = &self.current_task {
                     self.form_state = Some(TaskFormState::new_edit(task));
-                    self.view = View::TaskForm;
+                    self.right_pane_view = RightPaneView::TaskForm;
                 }
             }
             // e 键编辑当前条目名称
             KeyCode::Char('e') => {
                 if let Some(task) = &self.current_task {
                     if let Some(item) = task.checklist.get(self.selected_item_index) {
-                        self.input_mode = InputMode::EditingItemName;
+                        self.overlay = Overlay::Input(InputMode::EditingItemName);
                         self.input_buffer = item.task.clone();
                         self.message = Some("编辑条目名称，Enter 确认，Esc 取消".to_owned());
                     }
@@ -1551,7 +1671,7 @@ impl App {
             }
             // N 键（Shift+n）添加笔记
             KeyCode::Char('N') => {
-                self.input_mode = InputMode::AddingNote;
+                self.overlay = Overlay::Input(InputMode::AddingNote);
                 self.input_buffer.clear();
                 self.message = Some("输入笔记内容，Enter 确认，Esc 取消".to_owned());
             }
@@ -1560,13 +1680,13 @@ impl App {
                 if let Some(task) = &self.current_task {
                     if !task.notes.is_empty() {
                         self.selected_note_index = 0;
-                        self.confirm_delete_note = true;
+                        self.overlay = Overlay::DeleteNote;
                     }
                 }
             }
             // L 键添加资源链接（两步输入：名称 → URL）
             KeyCode::Char('L') => {
-                self.input_mode = InputMode::AddingResourceName;
+                self.overlay = Overlay::Input(InputMode::AddingResourceName);
                 self.input_buffer.clear();
                 self.resource_name_buffer.clear();
                 self.message = Some("输入资源名称，Enter 下一步，Esc 取消".to_owned());
@@ -1577,13 +1697,19 @@ impl App {
         Ok(())
     }
 
-    /// 输入模式下的键盘处理。
+    /// 输入模式下的键盘处理（覆盖层 Overlay::Input）。
     fn handle_input_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
+        // 获取当前输入模式的克隆（因为后续需要修改 overlay）
+        let current_mode = match &self.overlay {
+            Overlay::Input(mode) => mode.clone(),
+            _ => return,
+        };
+
         match key.code {
             KeyCode::Esc => {
-                self.input_mode = InputMode::Normal;
+                self.overlay = Overlay::None;
                 self.input_buffer.clear();
                 self.resource_name_buffer.clear();
                 self.message = None;
@@ -1592,10 +1718,10 @@ impl App {
                 let value = self.input_buffer.trim().to_owned();
                 if let Some(task) = &self.current_task {
                     let task_id = task.id.clone();
-                    match &self.input_mode {
+                    match &current_mode {
                         InputMode::AddingItem => {
                             if value.is_empty() {
-                                self.input_mode = InputMode::Normal;
+                                self.overlay = Overlay::None;
                                 self.input_buffer.clear();
                                 self.message = Some("条目名称不能为空".to_owned());
                                 return;
@@ -1604,7 +1730,7 @@ impl App {
                         }
                         InputMode::EditingItemName => {
                             if value.is_empty() {
-                                self.input_mode = InputMode::Normal;
+                                self.overlay = Overlay::None;
                                 self.input_buffer.clear();
                                 self.message = Some("条目名称不能为空".to_owned());
                                 return;
@@ -1618,7 +1744,7 @@ impl App {
                         }
                         InputMode::AddingNote => {
                             if value.is_empty() {
-                                self.input_mode = InputMode::Normal;
+                                self.overlay = Overlay::None;
                                 self.input_buffer.clear();
                                 self.message = Some("笔记内容不能为空".to_owned());
                                 return;
@@ -1627,7 +1753,7 @@ impl App {
                         }
                         InputMode::AddingResourceName => {
                             if value.is_empty() {
-                                self.input_mode = InputMode::Normal;
+                                self.overlay = Overlay::None;
                                 self.input_buffer.clear();
                                 self.message = Some("资源名称不能为空".to_owned());
                                 return;
@@ -1635,13 +1761,13 @@ impl App {
                             // 保存名称，切换到 URL 输入步骤
                             self.resource_name_buffer = value;
                             self.input_buffer.clear();
-                            self.input_mode = InputMode::AddingResourceUrl;
+                            self.overlay = Overlay::Input(InputMode::AddingResourceUrl);
                             self.message = Some("输入资源 URL，Enter 确认，Esc 取消".to_owned());
-                            return; // 不清除输入模式
+                            return; // 不清除覆盖层
                         }
                         InputMode::AddingResourceUrl => {
                             if value.is_empty() {
-                                self.input_mode = InputMode::Normal;
+                                self.overlay = Overlay::None;
                                 self.input_buffer.clear();
                                 self.resource_name_buffer.clear();
                                 self.message = Some("资源 URL 不能为空".to_owned());
@@ -1653,7 +1779,7 @@ impl App {
                         InputMode::Normal => unreachable!(),
                     }
                 }
-                self.input_mode = InputMode::Normal;
+                self.overlay = Overlay::None;
                 self.input_buffer.clear();
                 self.resource_name_buffer.clear();
             }
@@ -1667,142 +1793,22 @@ impl App {
         }
     }
 
-    // ── 项目列表键盘处理 ────────────────────────────────────────────
-
-    /// 项目列表视图的键盘处理。
-    fn handle_project_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
-        use crossterm::event::KeyCode;
-
-        let count = self.projects.len();
-
-        match key.code {
-            // 上下移动
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.project_selected_index > 0 {
-                    self.project_selected_index -= 1;
-                    self.adjust_project_scroll();
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if count > 0 && self.project_selected_index < count - 1 {
-                    self.project_selected_index += 1;
-                    self.adjust_project_scroll();
-                }
-            }
-            // 查看详情
-            KeyCode::Enter => {
-                if let Some(project) = self.projects.get(self.project_selected_index) {
-                    let project_id = project.id.clone();
-                    self.spawn_load_project_detail(project_id);
-                    self.message = Some("正在加载项目详情...".to_owned());
-                }
-            }
-            // 新建项目
-            KeyCode::Char('n') => {
-                self.project_form_state = Some(ProjectFormState::new_create());
-                self.view = View::ProjectForm;
-            }
-            // 删除项目（显示确认）
-            KeyCode::Char('d') => {
-                if !self.projects.is_empty() {
-                    self.confirm_delete_project = true;
-                }
-            }
-            // 刷新列表
-            KeyCode::Char('r') => {
-                self.spawn_load_projects();
-            }
-            // 返回任务列表
-            KeyCode::Esc => {
-                self.view = View::TaskList;
-                self.spawn_load_tasks();
-            }
-            // Home/End 快速跳转
-            KeyCode::Home => {
-                self.project_selected_index = 0;
-                self.project_scroll_offset = 0;
-            }
-            KeyCode::End => {
-                if count > 0 {
-                    self.project_selected_index = count - 1;
-                    self.adjust_project_scroll();
-                }
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    /// 项目详情视图的键盘处理。
-    fn handle_project_detail_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
-        use crossterm::event::KeyCode;
-
-        let task_count = self.project_tasks.len();
-
-        match key.code {
-            // 上下移动关联任务
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.project_task_selected_index > 0 {
-                    self.project_task_selected_index -= 1;
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if task_count > 0 && self.project_task_selected_index < task_count - 1 {
-                    self.project_task_selected_index += 1;
-                }
-            }
-            // Enter 查看关联任务详情
-            KeyCode::Enter => {
-                if let Some(task) = self.project_tasks.get(self.project_task_selected_index) {
-                    let task_id = task.id.clone();
-                    self.spawn_load_task_detail(task_id);
-                    self.message = Some("正在加载任务详情...".to_owned());
-                }
-            }
-            // E 编辑项目
-            KeyCode::Char('E') => {
-                if let Some(project) = &self.current_project {
-                    self.project_form_state = Some(ProjectFormState::new_edit(project));
-                    self.view = View::ProjectForm;
-                }
-            }
-            // d 删除项目
-            KeyCode::Char('d') => {
-                if self.current_project.is_some() {
-                    self.confirm_delete_project = true;
-                }
-            }
-            // Esc 返回项目列表
-            KeyCode::Esc => {
-                self.view = View::ProjectList;
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
     /// 项目删除确认对话框的键盘处理。
     fn handle_delete_project_confirm_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::KeyCode;
 
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                if let Some(project) = &self.current_project {
+                if let Some(project) = self.projects.get(self.project_selected_index) {
                     let project_id = project.id.clone();
-                    self.confirm_delete_project = false;
-                    self.spawn_delete_project(project_id);
-                } else if let Some(project) = self.projects.get(self.project_selected_index) {
-                    let project_id = project.id.clone();
-                    self.confirm_delete_project = false;
+                    self.overlay = Overlay::None;
                     self.spawn_delete_project(project_id);
                 } else {
-                    self.confirm_delete_project = false;
+                    self.overlay = Overlay::None;
                 }
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.confirm_delete_project = false;
+                self.overlay = Overlay::None;
             }
             _ => {}
         }
@@ -1820,11 +1826,7 @@ impl App {
             // Esc 取消表单
             KeyCode::Esc => {
                 self.project_form_state = None;
-                self.view = if self.current_project.is_some() {
-                    View::ProjectDetail
-                } else {
-                    View::ProjectList
-                };
+                self.overlay = Overlay::None;
                 self.message = Some("已取消".to_owned());
             }
             // Tab 切换到下一个字段
@@ -1850,6 +1852,7 @@ impl App {
                 let editing_project_id = form.editing_project_id.clone();
 
                 self.project_form_state = None;
+                self.overlay = Overlay::None;
 
                 match mode {
                     ProjectFormMode::Create => {
@@ -1907,15 +1910,10 @@ impl App {
         };
 
         match key.code {
-            // Esc 取消表单，返回上一个视图
+            // Esc 取消表单，返回右栏任务列表
             KeyCode::Esc => {
                 self.form_state = None;
-                // 返回到合适的视图
-                self.view = if self.current_task.is_some() {
-                    View::TaskDetail
-                } else {
-                    View::TaskList
-                };
+                self.right_pane_view = RightPaneView::TaskList;
                 self.message = Some("已取消".to_owned());
             }
             // Tab 切换到下一个字段
@@ -1950,12 +1948,16 @@ impl App {
 
                 match mode {
                     FormMode::Create => {
+                        // 获取当前选中项目的 ID，用于自动关联
+                        let project_id = self.projects.get(self.project_selected_index)
+                            .map(|p| p.id.clone());
                         self.spawn_create_task(
                             description,
                             if context.is_empty() { None } else { Some(context) },
                             if priority.is_empty() { None } else { Some(priority) },
                             if tags_str.is_empty() { None } else { Some(tags_str) },
                             if eta.is_empty() { None } else { Some(eta) },
+                            project_id,
                         );
                     }
                     FormMode::Edit => {
@@ -1972,13 +1974,28 @@ impl App {
                     }
                 }
             }
-            // Backspace 删除末尾字符
-            KeyCode::Backspace => {
+            // 优先级字段：枚举选择模式（Space/→/← 循环切换）
+            KeyCode::Char(' ') | KeyCode::Right | KeyCode::Left
+                if form.focused_field == FormField::Priority =>
+            {
+                const OPTIONS: &[&str] = &["", "low", "medium", "high"];
+                let current = form.priority.trim().to_lowercase();
+                let idx = OPTIONS.iter().position(|&o| o == current).unwrap_or(0);
+                let new_idx = if key.code == KeyCode::Left {
+                    if idx == 0 { OPTIONS.len() - 1 } else { idx - 1 }
+                } else {
+                    (idx + 1) % OPTIONS.len()
+                };
+                form.priority = OPTIONS[new_idx].to_owned();
+                form.error = None;
+            }
+            // Backspace 删除末尾字符（优先级字段除外）
+            KeyCode::Backspace if form.focused_field != FormField::Priority => {
                 form.focused_value_mut().pop();
                 form.error = None;
             }
-            // 普通字符输入
-            KeyCode::Char(c) => {
+            // 普通字符输入（优先级字段除外）
+            KeyCode::Char(c) if form.focused_field != FormField::Priority => {
                 form.focused_value_mut().push(c);
                 form.error = None;
             }
@@ -1987,6 +2004,8 @@ impl App {
     }
 
     /// 异步创建任务（通过 spawn + Action 回传）。
+    ///
+    /// 如果指定了 `project_id`，创建后自动将任务关联到该项目。
     fn spawn_create_task(
         &mut self,
         description: String,
@@ -1994,6 +2013,7 @@ impl App {
         priority: Option<String>,
         tags_str: Option<String>,
         eta: Option<String>,
+        project_id: Option<String>,
     ) {
         let data_dir = self.store_cloned();
         if let Some(tx) = self.action_tx.clone() {
@@ -2038,7 +2058,21 @@ impl App {
                 .await
                 {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                        // 如果指定了项目，自动关联
+                        if let Some(pid) = &project_id {
+                            match crate::core::project::set_task_project(&store, &task.id, Some(pid)).await {
+                                Ok(_) => {
+                                    let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(AppEvent::Action(Action::Error(
+                                        format!("任务已创建但关联项目失败: {e}"),
+                                    )));
+                                }
+                            }
+                        } else {
+                            let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                        }
                     }
                     Err(e) => {
                         let _ = tx.send(AppEvent::Action(Action::Error(
@@ -2220,6 +2254,19 @@ impl App {
         }
     }
 
+    /// 加载当前选中项目的任务列表（便捷方法）。
+    ///
+    /// 从 `projects[project_selected_index]` 获取项目 ID，
+    /// 重置 `selected_index` 和 `scroll_offset`，然后调用 `spawn_load_project_tasks`。
+    fn spawn_load_project_tasks_for_selected_project(&mut self) {
+        if let Some(project) = self.projects.get(self.project_selected_index) {
+            let project_id = project.id.clone();
+            self.selected_index = 0;
+            self.scroll_offset = 0;
+            self.spawn_load_project_tasks(project_id);
+        }
+    }
+
     /// 异步创建项目。
     fn spawn_create_project(&mut self, name: String, description: Option<String>) {
         let data_dir = self.store_cloned();
@@ -2394,23 +2441,25 @@ impl App {
     fn handle_action(&mut self, action: Action) -> anyhow::Result<()> {
         match action {
             Action::TasksLoaded(tasks) => {
+                // 保留用于 filtered_and_sorted_tasks 兼容（内部缓存）
                 self.tasks = tasks;
                 self.clamp_selected_index();
-                self.message = Some(format!("已加载 {} 个任务", self.tasks.len()));
                 self.error_message = None;
             }
             Action::TaskDetailLoaded(task) => {
                 self.selected_item_index = 0;
                 self.current_task = Some(task);
-                self.view = View::TaskDetail;
+                self.right_pane_view = RightPaneView::TaskDetail;
+                self.focused_pane = FocusedPane::Right;
                 self.error_message = None;
             }
             Action::TaskDeleted(task_id) => {
-                // 如果删除的是当前查看的任务，返回列表视图
+                // 如果删除的是当前查看的任务，返回右栏任务列表
                 if self.current_task.as_ref().map_or(false, |t| t.id == task_id) {
                     self.current_task = None;
-                    self.view = View::TaskList;
+                    self.right_pane_view = RightPaneView::TaskList;
                 }
+                self.project_tasks.retain(|t| t.id != task_id);
                 self.tasks.retain(|t| t.id != task_id);
                 self.clamp_selected_index();
                 self.message = Some("任务已删除".to_owned());
@@ -2439,19 +2488,23 @@ impl App {
             Action::TaskCreated(task) => {
                 self.message = Some("任务已创建".to_owned());
                 self.error_message = None;
-                // 刷新任务列表
-                self.spawn_load_tasks();
-                // 切换到详情视图展示新建的任务
+                // 刷新当前项目的任务列表
+                self.spawn_load_project_tasks_for_selected_project();
+                // 切换到右栏详情视图展示新建的任务
                 self.current_task = Some(task);
-                self.view = View::TaskDetail;
+                self.right_pane_view = RightPaneView::TaskDetail;
+                self.focused_pane = FocusedPane::Right;
             }
             Action::TaskUpdated(task) => {
-                // 更新列表缓存中的对应任务
+                // 更新缓存中的对应任务
                 if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task.id) {
                     *t = task.clone();
                 }
+                if let Some(t) = self.project_tasks.iter_mut().find(|t| t.id == task.id) {
+                    *t = task.clone();
+                }
                 self.current_task = Some(task);
-                self.view = View::TaskDetail;
+                self.right_pane_view = RightPaneView::TaskDetail;
                 self.message = Some("任务已更新".to_owned());
                 self.error_message = None;
             }
@@ -2472,6 +2525,7 @@ impl App {
                 self.message = Some("资源已删除".to_owned());
             }
             Action::ProjectsLoaded(projects) => {
+                let had_projects = !self.projects.is_empty();
                 self.projects = projects;
                 if self.project_selected_index >= self.projects.len() && !self.projects.is_empty() {
                     self.project_selected_index = self.projects.len() - 1;
@@ -2480,53 +2534,63 @@ impl App {
                 }
                 self.message = Some(format!("已加载 {} 个项目", self.projects.len()));
                 self.error_message = None;
+                // 首次加载项目时，自动选中第一个项目并加载其任务
+                if !had_projects && !self.projects.is_empty() {
+                    self.spawn_load_project_tasks_for_selected_project();
+                }
             }
-            Action::ProjectDetailLoaded(project) => {
-                // 需要先保存 project 再异步加载关联任务
-                let project_id = project.id.clone();
-                self.current_project = Some(project);
-                self.project_task_selected_index = 0;
-                self.view = View::ProjectDetail;
-                self.error_message = None;
-                // 异步加载关联任务
-                self.spawn_load_project_tasks(project_id);
+            Action::ProjectDetailLoaded(_project) => {
+                // 不再使用独立的项目详情视图，忽略此 Action
+                // 项目信息直接从 projects[project_selected_index] 获取
             }
             Action::ProjectCreated(project) => {
                 self.message = Some("项目已创建".to_owned());
                 self.error_message = None;
+                // 关闭覆盖层
+                self.overlay = Overlay::None;
+                // 刷新项目列表
                 self.spawn_load_projects();
-                self.current_project = Some(project);
-                self.view = View::ProjectDetail;
+                // 选中新建的项目
+                if let Some(pos) = self.projects.iter().position(|p| p.id == project.id) {
+                    self.project_selected_index = pos;
+                }
             }
             Action::ProjectUpdated(project) => {
                 // 更新列表缓存
                 if let Some(p) = self.projects.iter_mut().find(|p| p.id == project.id) {
                     *p = project.clone();
                 }
-                self.current_project = Some(project);
-                self.view = View::ProjectDetail;
+                // 关闭覆盖层
+                self.overlay = Overlay::None;
                 self.message = Some("项目已更新".to_owned());
                 self.error_message = None;
             }
             Action::ProjectDeleted(project_id) => {
-                if self.current_project.as_ref().map_or(false, |p| p.id == project_id) {
-                    self.current_project = None;
-                    self.project_tasks.clear();
-                }
+                // 关闭覆盖层
+                self.overlay = Overlay::None;
+                // 清理
+                self.project_tasks.retain(|t| {
+                    t.project_id.as_ref().map_or(true, |pid| pid != &project_id)
+                });
                 self.projects.retain(|p| p.id != project_id);
                 if self.project_selected_index >= self.projects.len() && !self.projects.is_empty() {
                     self.project_selected_index = self.projects.len() - 1;
                 } else if self.projects.is_empty() {
                     self.project_selected_index = 0;
+                    self.project_tasks.clear();
                 }
-                self.view = View::ProjectList;
+                // 如果有剩余项目，加载其任务
+                if !self.projects.is_empty() {
+                    self.spawn_load_project_tasks_for_selected_project();
+                }
                 self.message = Some("项目已删除".to_owned());
                 self.error_message = None;
             }
             Action::ProjectTasksLoaded(tasks) => {
                 self.project_tasks = tasks;
-                self.project_task_selected_index = 0;
-                self.message = Some(format!("已加载 {} 个关联任务", self.project_tasks.len()));
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.message = Some(format!("已加载 {} 个任务", self.project_tasks.len()));
             }
             Action::Error(err) => {
                 self.error_message = Some(err);
@@ -2816,23 +2880,46 @@ mod tests {
         }
     }
 
-    // ── View 测试 ─────────────────────────────────────────────────────────
+    // ── FocusedPane / RightPaneView / Overlay 测试 ────────────────────────
 
     #[test]
-    fn view_variants_distinct() {
+    fn focused_pane_variants_distinct() {
+        assert_ne!(FocusedPane::Left, FocusedPane::Right);
+    }
+
+    #[test]
+    fn right_pane_view_variants_distinct() {
         let views = [
-            View::TaskList,
-            View::TaskDetail,
-            View::TaskForm,
-            View::Help,
-            View::ProjectList,
-            View::ProjectDetail,
-            View::ProjectForm,
+            RightPaneView::TaskList,
+            RightPaneView::TaskDetail,
+            RightPaneView::TaskForm,
+            RightPaneView::Help,
         ];
         for (i, a) in views.iter().enumerate() {
             for (j, b) in views.iter().enumerate() {
                 if i != j {
-                    assert_ne!(a, b, "View variants at {i} and {j} should differ");
+                    assert_ne!(a, b, "RightPaneView variants at {i} and {j} should differ");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn overlay_variants_distinct() {
+        let overlays = [
+            Overlay::None,
+            Overlay::ProjectForm(ProjectFormMode::Create),
+            Overlay::ProjectForm(ProjectFormMode::Edit),
+            Overlay::DeleteProject,
+            Overlay::DeleteTask,
+            Overlay::DeleteNote,
+            Overlay::Input(InputMode::Normal),
+            Overlay::Input(InputMode::AddingItem),
+        ];
+        for (i, a) in overlays.iter().enumerate() {
+            for (j, b) in overlays.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b, "Overlay variants at {i} and {j} should differ");
                 }
             }
         }
@@ -2843,7 +2930,9 @@ mod tests {
     #[test]
     fn app_new_defaults() {
         let app = App::new(None);
-        assert_eq!(app.view(), &View::TaskList);
+        assert_eq!(app.focused_pane(), &FocusedPane::Left);
+        assert_eq!(app.right_pane_view(), &RightPaneView::TaskList);
+        assert_eq!(app.overlay(), &Overlay::None);
         assert!(!app.should_quit());
         assert!(app.tasks().is_empty());
         assert_eq!(app.selected_index(), 0);
@@ -2854,9 +2943,14 @@ mod tests {
         assert!(app.search_query().is_none());
         assert!(!app.search_mode());
         assert!(!app.confirm_delete());
+        assert!(!app.confirm_delete_note());
+        assert!(!app.confirm_delete_project());
+        assert!(!app.is_overlay_active());
         assert_eq!(app.scroll_offset(), 0);
         assert_eq!(app.selected_item_index(), 0);
         assert!(app.form_state().is_none());
+        assert!(app.projects().is_empty());
+        assert_eq!(app.project_selected_index(), 0);
     }
 
     #[test]
@@ -2867,12 +2961,22 @@ mod tests {
     }
 
     #[test]
-    fn app_set_view() {
+    fn app_set_focused_pane() {
         let mut app = App::new(None);
-        assert_eq!(app.view(), &View::TaskList);
-        app.set_view(View::Help);
-        assert_eq!(app.view(), &View::Help);
-        app.set_view(View::TaskDetail);
-        assert_eq!(app.view(), &View::TaskDetail);
+        assert_eq!(app.focused_pane(), &FocusedPane::Left);
+        app.set_focused_pane(FocusedPane::Right);
+        assert_eq!(app.focused_pane(), &FocusedPane::Right);
+        app.set_focused_pane(FocusedPane::Left);
+        assert_eq!(app.focused_pane(), &FocusedPane::Left);
+    }
+
+    #[test]
+    fn app_set_right_pane_view() {
+        let mut app = App::new(None);
+        assert_eq!(app.right_pane_view(), &RightPaneView::TaskList);
+        app.set_right_pane_view(RightPaneView::Help);
+        assert_eq!(app.right_pane_view(), &RightPaneView::Help);
+        app.set_right_pane_view(RightPaneView::TaskDetail);
+        assert_eq!(app.right_pane_view(), &RightPaneView::TaskDetail);
     }
 }
