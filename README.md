@@ -1,5 +1,7 @@
 # pinchtask
 
+[![SafeSkill 88/100](https://img.shields.io/badge/SafeSkill-88%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/raven-1027-pinchtask)
+
 > [!WARNING]  
 > 几乎所有代码都由 GLM-5-Turbo 生成, 本程序按原样提供 不做任何保障.
 
