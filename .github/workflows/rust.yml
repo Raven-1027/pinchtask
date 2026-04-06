@@ -65,7 +65,7 @@ jobs:
         rust: [stable, beta]
         include:
           - os: ubuntu-latest
-            rust: "1.75.0"                    # MSRV（按项目实际需求修改）
+            rust: "1.86.0"                    # MSRV（按项目实际需求修改）
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
