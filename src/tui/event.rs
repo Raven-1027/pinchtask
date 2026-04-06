@@ -78,7 +78,14 @@ pub enum AppEvent {
     /// 终端尺寸变化
     Resize(u16, u16),
     /// 异步操作结果
-    Action(Action),
+    Action(Box<Action>),
+}
+
+impl AppEvent {
+    /// 创建 Action 事件的辅助方法，避免调用方手动 Box。
+    pub fn action(action: Action) -> Self {
+        Self::Action(Box::new(action))
+    }
 }
 
 // ── 事件总线 ───────────────────────────────────────────────────────────────
@@ -108,9 +115,7 @@ impl EventBus {
         tokio::spawn(async move {
             loop {
                 // 以固定超时轮询，避免阻塞
-                if crossterm::event::poll(Duration::from_millis(POLL_TIMEOUT_MS))
-                    .unwrap_or(false)
-                {
+                if crossterm::event::poll(Duration::from_millis(POLL_TIMEOUT_MS)).unwrap_or(false) {
                     match crossterm::event::read() {
                         Ok(event) => {
                             let app_event = match event {

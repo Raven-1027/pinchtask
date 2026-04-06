@@ -164,9 +164,7 @@ impl TaskFormState {
             editing_task_id: Some(task.id.clone()),
             description: task.task_description.clone(),
             context: task.context_for_all_tasks.clone().unwrap_or_default(),
-            priority: meta
-                .and_then(|m| m.priority.clone())
-                .unwrap_or_default(),
+            priority: meta.and_then(|m| m.priority.clone()).unwrap_or_default(),
             tags: meta
                 .and_then(|m| m.tags.clone())
                 .map(|t| t.join(", "))
@@ -596,8 +594,6 @@ impl App {
         self.search_mode
     }
 
-
-
     /// 获取滚动偏移量。
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
@@ -607,8 +603,6 @@ impl App {
     pub fn selected_item_index(&self) -> usize {
         self.selected_item_index
     }
-
-
 
     /// 获取输入缓冲区内容。
     pub fn input_buffer(&self) -> &str {
@@ -635,21 +629,15 @@ impl App {
         self.project_scroll_offset
     }
 
-
-
     /// 获取项目关联任务列表。
     pub fn project_tasks(&self) -> &[Task] {
         &self.project_tasks
     }
 
-
-
     /// 获取项目表单状态引用。
     pub fn project_form_state(&self) -> Option<&ProjectFormState> {
         self.project_form_state.as_ref()
     }
-
-
 
     /// 是否有活跃的覆盖层。
     pub fn is_overlay_active(&self) -> bool {
@@ -781,17 +769,18 @@ impl App {
                 match store {
                     Ok(s) => match s.list_tasks().await {
                         Ok(tasks) => {
-                            let _ = tx.send(AppEvent::Action(Action::TasksLoaded(tasks)));
+                            let _ = tx.send(AppEvent::action(Action::TasksLoaded(tasks)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("加载任务列表失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "加载任务列表失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -808,17 +797,18 @@ impl App {
                 match store {
                     Ok(s) => match s.get_task(&task_id).await {
                         Ok(task) => {
-                            let _ = tx.send(AppEvent::Action(Action::TaskDetailLoaded(task)));
+                            let _ = tx.send(AppEvent::action(Action::TaskDetailLoaded(task)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("加载任务详情失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "加载任务详情失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -834,17 +824,18 @@ impl App {
                 match store {
                     Ok(s) => match s.delete_task(&task_id).await {
                         Ok(()) => {
-                            let _ = tx.send(AppEvent::Action(Action::TaskDeleted(task_id)));
+                            let _ = tx.send(AppEvent::action(Action::TaskDeleted(task_id)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("删除任务失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "删除任务失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -880,12 +871,8 @@ impl App {
             }
             SortMode::Priority => {
                 result.sort_by(|a, b| {
-                    let pa = priority_rank(
-                        a.metadata.as_ref().and_then(|m| m.priority.as_deref()),
-                    );
-                    let pb = priority_rank(
-                        b.metadata.as_ref().and_then(|m| m.priority.as_deref()),
-                    );
+                    let pa = priority_rank(a.metadata.as_ref().and_then(|m| m.priority.as_deref()));
+                    let pb = priority_rank(b.metadata.as_ref().and_then(|m| m.priority.as_deref()));
                     pb.cmp(&pa) // 高优先级在前
                 });
             }
@@ -926,7 +913,7 @@ impl App {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
             AppEvent::Resize(_w, _h) => Ok(()),
-            AppEvent::Action(action) => self.handle_action(action),
+            AppEvent::Action(action) => self.handle_action(*action),
         }
     }
 
@@ -1119,7 +1106,10 @@ impl App {
     }
 
     /// 右栏任务列表的键盘处理。
-    fn handle_right_task_list_key(&mut self, key: crossterm::event::KeyEvent) -> anyhow::Result<()> {
+    fn handle_right_task_list_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> anyhow::Result<()> {
         use crossterm::event::{KeyCode, KeyModifiers};
 
         // Ctrl+R 刷新列表
@@ -1244,7 +1234,8 @@ impl App {
                 // 确认删除：优先使用 current_task（详情视图），其次用列表选中项
                 let task_id = if let Some(task) = &self.current_task {
                     task.id.clone()
-                } else if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index) {
+                } else if let Some(task) = self.filtered_and_sorted_tasks().get(self.selected_index)
+                {
                     task.id.clone()
                 } else {
                     self.overlay = Overlay::None;
@@ -1280,8 +1271,6 @@ impl App {
         }
     }
 
-
-
     /// 异步切换清单条目完成状态。
     pub fn spawn_toggle_item(&mut self, task_id: String, item_index: usize, currently_done: bool) {
         let data_dir = self.store_cloned();
@@ -1290,9 +1279,9 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
@@ -1303,12 +1292,12 @@ impl App {
                 };
                 match result {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemToggled(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemToggled(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("切换条目状态失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "切换条目状态失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1323,22 +1312,21 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
-                match crate::core::add_checklist_item(
-                    &store, &task_id, &item_name, "", None,
-                ).await {
+                match crate::core::add_checklist_item(&store, &task_id, &item_name, "", None).await
+                {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemAdded(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemAdded(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("添加条目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "添加条目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1353,20 +1341,20 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::remove_checklist_item(&store, &task_id, item_index).await {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemRemoved(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemRemoved(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("删除条目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "删除条目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1381,22 +1369,30 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::update_checklist_item(
-                    &store, &task_id, item_index, Some(&new_name), None, None, None,
-                ).await {
+                    &store,
+                    &task_id,
+                    item_index,
+                    Some(&new_name),
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemEdited(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemEdited(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("编辑条目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "编辑条目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1411,22 +1407,30 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::update_checklist_item(
-                    &store, &task_id, item_index, None, Some(&new_desc), None, None,
-                ).await {
+                    &store,
+                    &task_id,
+                    item_index,
+                    None,
+                    Some(&new_desc),
+                    None,
+                    None,
+                )
+                .await
+                {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemEdited(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemEdited(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("编辑条目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "编辑条目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1441,20 +1445,22 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
-                match crate::core::reorder_checklist_item(&store, &task_id, from_index, to_index).await {
+                match crate::core::reorder_checklist_item(&store, &task_id, from_index, to_index)
+                    .await
+                {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ItemReordered(task)));
+                        let _ = tx.send(AppEvent::action(Action::ItemReordered(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("移动条目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "移动条目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1469,20 +1475,20 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::add_note(&store, &task_id, &content).await {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::NoteAdded(task)));
+                        let _ = tx.send(AppEvent::action(Action::NoteAdded(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("添加笔记失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "添加笔记失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1497,20 +1503,20 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::delete_note(&store, &task_id, note_index).await {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::NoteDeleted(task)));
+                        let _ = tx.send(AppEvent::action(Action::NoteDeleted(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("删除笔记失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "删除笔记失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1525,20 +1531,20 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::add_resource(&store, &task_id, &name, &url, None).await {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::ResourceAdded(task)));
+                        let _ = tx.send(AppEvent::action(Action::ResourceAdded(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("添加资源失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "添加资源失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -1858,7 +1864,11 @@ impl App {
                     ProjectFormMode::Create => {
                         self.spawn_create_project(
                             name,
-                            if description.is_empty() { None } else { Some(description) },
+                            if description.is_empty() {
+                                None
+                            } else {
+                                Some(description)
+                            },
                         );
                     }
                     ProjectFormMode::Edit => {
@@ -1866,7 +1876,11 @@ impl App {
                             self.spawn_update_project(
                                 project_id,
                                 name,
-                                if description.is_empty() { None } else { Some(description) },
+                                if description.is_empty() {
+                                    None
+                                } else {
+                                    Some(description)
+                                },
                             );
                         }
                     }
@@ -1949,13 +1963,27 @@ impl App {
                 match mode {
                     FormMode::Create => {
                         // 获取当前选中项目的 ID，用于自动关联
-                        let project_id = self.projects.get(self.project_selected_index)
+                        let project_id = self
+                            .projects
+                            .get(self.project_selected_index)
                             .map(|p| p.id.clone());
                         self.spawn_create_task(
                             description,
-                            if context.is_empty() { None } else { Some(context) },
-                            if priority.is_empty() { None } else { Some(priority) },
-                            if tags_str.is_empty() { None } else { Some(tags_str) },
+                            if context.is_empty() {
+                                None
+                            } else {
+                                Some(context)
+                            },
+                            if priority.is_empty() {
+                                None
+                            } else {
+                                Some(priority)
+                            },
+                            if tags_str.is_empty() {
+                                None
+                            } else {
+                                Some(tags_str)
+                            },
                             if eta.is_empty() { None } else { Some(eta) },
                             project_id,
                         );
@@ -1982,7 +2010,11 @@ impl App {
                 let current = form.priority.trim().to_lowercase();
                 let idx = OPTIONS.iter().position(|&o| o == current).unwrap_or(0);
                 let new_idx = if key.code == KeyCode::Left {
-                    if idx == 0 { OPTIONS.len() - 1 } else { idx - 1 }
+                    if idx == 0 {
+                        OPTIONS.len() - 1
+                    } else {
+                        idx - 1
+                    }
                 } else {
                     (idx + 1) % OPTIONS.len()
                 };
@@ -2022,9 +2054,9 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
@@ -2060,24 +2092,30 @@ impl App {
                     Ok(task) => {
                         // 如果指定了项目，自动关联
                         if let Some(pid) = &project_id {
-                            match crate::core::project::set_task_project(&store, &task.id, Some(pid)).await {
+                            match crate::core::project::set_task_project(
+                                &store,
+                                &task.id,
+                                Some(pid),
+                            )
+                            .await
+                            {
                                 Ok(_) => {
-                                    let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                                    let _ = tx.send(AppEvent::action(Action::TaskCreated(task)));
                                 }
                                 Err(e) => {
-                                    let _ = tx.send(AppEvent::Action(Action::Error(
-                                        format!("任务已创建但关联项目失败: {e}"),
-                                    )));
+                                    let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                        "任务已创建但关联项目失败: {e}"
+                                    ))));
                                 }
                             }
                         } else {
-                            let _ = tx.send(AppEvent::Action(Action::TaskCreated(task)));
+                            let _ = tx.send(AppEvent::action(Action::TaskCreated(task)));
                         }
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("创建任务失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "创建任务失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2101,9 +2139,9 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
@@ -2112,18 +2150,18 @@ impl App {
                 match crate::core::update_task_description(&store, &task_id, &description).await {
                     Ok(_) => {}
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("更新描述失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "更新描述失败: {e}"
+                        ))));
                         return;
                     }
                 }
 
                 // 2. 更新上下文
                 if let Err(e) = crate::core::update_context(&store, &task_id, &context).await {
-                    let _ = tx.send(AppEvent::Action(Action::Error(
-                        format!("更新上下文失败: {e}"),
-                    )));
+                    let _ = tx.send(AppEvent::action(Action::Error(format!(
+                        "更新上下文失败: {e}"
+                    ))));
                     return;
                 }
 
@@ -2145,28 +2183,24 @@ impl App {
                     } else {
                         Some(priority)
                     },
-                    estimated_completion_time: if eta.is_empty() {
-                        None
-                    } else {
-                        Some(eta)
-                    },
+                    estimated_completion_time: if eta.is_empty() { None } else { Some(eta) },
                 };
                 if let Err(e) = crate::core::update_metadata(&store, &task_id, metadata).await {
-                    let _ = tx.send(AppEvent::Action(Action::Error(
-                        format!("更新元数据失败: {e}"),
-                    )));
+                    let _ = tx.send(AppEvent::action(Action::Error(format!(
+                        "更新元数据失败: {e}"
+                    ))));
                     return;
                 }
 
                 // 4. 重新加载任务并回传
                 match store.get_task(&task_id).await {
                     Ok(task) => {
-                        let _ = tx.send(AppEvent::Action(Action::TaskUpdated(task)));
+                        let _ = tx.send(AppEvent::action(Action::TaskUpdated(task)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("加载更新后的任务失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "加载更新后的任务失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2184,17 +2218,18 @@ impl App {
                 match store {
                     Ok(s) => match crate::core::project::list_projects(&s).await {
                         Ok(projects) => {
-                            let _ = tx.send(AppEvent::Action(Action::ProjectsLoaded(projects)));
+                            let _ = tx.send(AppEvent::action(Action::ProjectsLoaded(projects)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("加载项目列表失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "加载项目列表失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2211,17 +2246,18 @@ impl App {
                 match store {
                     Ok(s) => match crate::core::project::get_project(&s, &project_id).await {
                         Ok(project) => {
-                            let _ = tx.send(AppEvent::Action(Action::ProjectDetailLoaded(project)));
+                            let _ = tx.send(AppEvent::action(Action::ProjectDetailLoaded(project)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("加载项目详情失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "加载项目详情失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2235,19 +2271,22 @@ impl App {
             tokio::spawn(async move {
                 let store = TaskStore::new(data_dir).await;
                 match store {
-                    Ok(s) => match crate::core::project::get_tasks_for_project(&s, &project_id).await {
+                    Ok(s) => match crate::core::project::get_tasks_for_project(&s, &project_id)
+                        .await
+                    {
                         Ok(tasks) => {
-                            let _ = tx.send(AppEvent::Action(Action::ProjectTasksLoaded(tasks)));
+                            let _ = tx.send(AppEvent::action(Action::ProjectTasksLoaded(tasks)));
                         }
                         Err(e) => {
-                            let _ = tx.send(AppEvent::Action(Action::Error(
-                                format!("加载项目任务失败: {e}"),
-                            )));
+                            let _ = tx.send(AppEvent::action(Action::Error(format!(
+                                "加载项目任务失败: {e}"
+                            ))));
                         }
                     },
                     Err(e) => {
-                        let _ = tx
-                            .send(AppEvent::Action(Action::Error(format!("数据库连接失败: {e}"))));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2276,26 +2315,22 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
-                match crate::core::project::create_project(
-                    &store,
-                    &name,
-                    description.as_deref(),
-                )
-                .await
+                match crate::core::project::create_project(&store, &name, description.as_deref())
+                    .await
                 {
                     Ok(project) => {
-                        let _ = tx.send(AppEvent::Action(Action::ProjectCreated(project)));
+                        let _ = tx.send(AppEvent::action(Action::ProjectCreated(project)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("创建项目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "创建项目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2316,9 +2351,9 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
@@ -2331,12 +2366,12 @@ impl App {
                 .await
                 {
                     Ok(project) => {
-                        let _ = tx.send(AppEvent::Action(Action::ProjectUpdated(project)));
+                        let _ = tx.send(AppEvent::action(Action::ProjectUpdated(project)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("更新项目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "更新项目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2351,20 +2386,20 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
                 match crate::core::project::delete_project(&store, &project_id).await {
                     Ok(()) => {
-                        let _ = tx.send(AppEvent::Action(Action::ProjectDeleted(project_id)));
+                        let _ = tx.send(AppEvent::action(Action::ProjectDeleted(project_id)));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("删除项目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "删除项目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2380,9 +2415,9 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
@@ -2390,14 +2425,14 @@ impl App {
                     .await
                 {
                     Ok(_) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
+                        let _ = tx.send(AppEvent::action(Action::Error(
                             "任务已添加到项目".to_owned(),
                         )));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("添加任务到项目失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "添加任务到项目失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2413,24 +2448,22 @@ impl App {
                 let store = match TaskStore::new(data_dir).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("数据库连接失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "数据库连接失败: {e}"
+                        ))));
                         return;
                     }
                 };
-                match crate::core::project::set_task_project(&store, &task_id, None)
-                    .await
-                {
+                match crate::core::project::set_task_project(&store, &task_id, None).await {
                     Ok(_) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
+                        let _ = tx.send(AppEvent::action(Action::Error(
                             "任务已从项目中移除".to_owned(),
                         )));
                     }
                     Err(e) => {
-                        let _ = tx.send(AppEvent::Action(Action::Error(
-                            format!("移除任务失败: {e}"),
-                        )));
+                        let _ = tx.send(AppEvent::action(Action::Error(format!(
+                            "移除任务失败: {e}"
+                        ))));
                     }
                 }
             });
@@ -2455,7 +2488,7 @@ impl App {
             }
             Action::TaskDeleted(task_id) => {
                 // 如果删除的是当前查看的任务，返回右栏任务列表
-                if self.current_task.as_ref().map_or(false, |t| t.id == task_id) {
+                if self.current_task.as_ref().is_some_and(|t| t.id == task_id) {
                     self.current_task = None;
                     self.right_pane_view = RightPaneView::TaskList;
                 }
@@ -2569,9 +2602,8 @@ impl App {
                 // 关闭覆盖层
                 self.overlay = Overlay::None;
                 // 清理
-                self.project_tasks.retain(|t| {
-                    t.project_id.as_ref().map_or(true, |pid| pid != &project_id)
-                });
+                self.project_tasks
+                    .retain(|t| t.project_id.as_ref() != Some(&project_id));
                 self.projects.retain(|p| p.id != project_id);
                 if self.project_selected_index >= self.projects.len() && !self.projects.is_empty() {
                     self.project_selected_index = self.projects.len() - 1;
@@ -2629,7 +2661,7 @@ mod tests {
     #[test]
     fn form_field_next_cycles() {
         // 从每个字段调用 next()，最后一个应循环回第一个
-        let fields= FormField::ORDER;
+        let fields = FormField::ORDER;
         for (i, field) in fields.iter().enumerate() {
             let next = field.next();
             let expected = fields[(i + 1) % fields.len()];
