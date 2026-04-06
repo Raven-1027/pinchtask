@@ -22,40 +22,47 @@
 
 ## 短 ID 匹配
 
-所有接受 `<TASK_ID>` 参数的命令均支持**短前缀匹配**：只需输入 UUID 的前若干位（建议 ≥ 4 位），系统会自动定位唯一匹配的任务。若前缀匹配到多个任务，将报错提示。
+所有接受 `<ID>`、`<TASK_ID>` 或 `<PROJECT_ID>` 参数的命令均支持**短前缀匹配**：只需输入 UUID 的前若干位（建议 ≥ 4 位），系统会自动定位唯一匹配的对象。若前缀匹配到多个对象，将报错提示。
 
-```
+```bash
 # 假设完整 ID 为 550e8400-e29b-41d4-a716-446655440000
-pinchtask show 550e
+pinchtask task show 550e
+pinchtask project show 550e
 ```
 
 ---
 
 ## 命令列表
 
-### `new` — 创建新任务
+### `task` — 任务管理
+
+任务级操作命令组。
+
+#### `task new` — 创建新任务
 
 ```
-pinchtask new <DESCRIPTION> [-c <CONTEXT>]
+pinchtask task new <DESCRIPTION> [-c <CONTEXT>] [-p <PROJECT>]
 ```
 
 | 参数 | 说明 |
 |------|------|
 | `<DESCRIPTION>` | 任务描述（必填，位置参数） |
-| `-c, --context <TEXT>` | 共享上下文信息，所有子任务可读取 |
+| `-c, --context <TEXT>` | 共享上下文信息 |
+| `-p, --project <ID>` | 关联到指定项目（支持短前缀） |
 
 **示例：**
 
 ```bash
-pinchtask new "实现用户登录功能" -c "使用 JWT 认证方案"
+pinchtask task new "实现用户登录功能" -c "使用 JWT 认证方案"
+pinchtask task new "编写单元测试" -p 550e
 ```
 
 ---
 
-### `ls` — 列出任务
+#### `task ls` — 列出任务
 
 ```
-pinchtask ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
+pinchtask task ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
 ```
 
 | 选项 | 说明 |
@@ -71,44 +78,40 @@ pinchtask ls [-a] [-d] [-l] [-n <N>] [--sort <FIELD>]
 **示例：**
 
 ```bash
-pinchtask ls --all --long --limit 20 --sort priority
+pinchtask task ls --all --long --limit 20 --sort priority
 ```
 
 ---
 
-### `show` — 查看任务详情
+#### `task show` — 查看任务详情
 
 ```
-pinchtask show <TASK_ID>
+pinchtask task show <ID>
 ```
 
 | 参数 | 说明 |
 |------|------|
-| `<TASK_ID>` | 任务 ID（支持短前缀） |
+| `<ID>` | 任务 ID（支持短前缀） |
 
 输出完整的任务信息，包括描述、共享上下文、所有清单条目及其状态、笔记、资源和元数据。
 
 **示例：**
 
 ```bash
-pinchtask show 550e
+pinchtask task show 550e
 ```
 
 ---
 
-### `edit` — 编辑任务或清单条目
-
-此命令根据是否传入 `--index` 参数，在**任务级编辑**和**条目级编辑**之间分流。
-
-#### 任务级编辑
+#### `task edit` — 编辑任务
 
 ```
-pinchtask edit <TASK_ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <TAGS>] [--eta <TIME>]
+pinchtask task edit <ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <TAGS>] [--eta <TIME>]
 ```
 
-| 选项 | 说明 |
+| 参数 | 说明 |
 |------|------|
-| `<TASK_ID>` | 任务 ID（支持短前缀） |
+| `<ID>` | 任务 ID（支持短前缀） |
 | `-d, --description <TEXT>` | 新的任务描述 |
 | `-c, --context <TEXT>` | 新的共享上下文 |
 | `--priority <P>` | 优先级：`high` / `medium` / `low` |
@@ -117,71 +120,43 @@ pinchtask edit <TASK_ID> [-d <TEXT>] [-c <TEXT>] [--priority <P>] [--tags <TAGS>
 
 至少需要指定一个可修改字段，否则报错。
 
-#### 条目级编辑
-
-```
-pinchtask edit <TASK_ID> <INDEX> [-t <TITLE>] [-d <TEXT>] [-p <PLAN>] [--done] [--undone]
-```
-
-| 选项 | 说明 |
-|------|------|
-| `<TASK_ID>` | 任务 ID（支持短前缀） |
-| `<INDEX>` | 清单条目索引（0 起始） |
-| `-t, --title <TITLE>` | 新标题 |
-| `-d, --description <TEXT>` | 新描述 |
-| `-p, --plan <PLAN>` | 新计划 |
-| `--done` | 标记为已完成 |
-| `--undone` | 标记为未完成 |
-
-> `--done` 与 `--undone` 互斥。`--priority` / `--tags` / `--eta` 不能与 `<INDEX>` 同时使用。
-
 **示例：**
 
 ```bash
-# 修改任务描述和优先级
-pinchtask edit 550e -d "更新后的描述" --priority high
-
-# 修改第 2 个清单条目的标题并标记完成
-pinchtask edit 550e 1 -t "新标题" --done
+pinchtask task edit 550e -d "更新后的描述" --priority high
+pinchtask task edit 550e --tags "bug,urgent" --eta "2025-01-15T18:00:00"
 ```
 
 ---
 
-### `rm` — 删除任务或清单条目
-
-#### 删除任务
+#### `task rm` — 删除任务
 
 ```
-pinchtask rm <TASK_ID>
-```
-
-#### 删除清单条目
-
-```
-pinchtask rm <TASK_ID> <INDEX>
+pinchtask task rm <ID>
 ```
 
 | 参数 | 说明 |
 |------|------|
-| `<TASK_ID>` | 任务 ID（支持短前缀） |
-| `<INDEX>` | 清单条目索引（0 起始），不传则删除整个任务 |
+| `<ID>` | 任务 ID（支持短前缀） |
+
+删除整个任务及其所有关联数据（清单条目、笔记、资源）。如需仅删除清单条目，请使用 `item rm`。
 
 **示例：**
 
 ```bash
-# 删除整个任务
-pinchtask rm 550e
-
-# 删除任务中的第 1 个清单条目
-pinchtask rm 550e 0
+pinchtask task rm 550e
 ```
 
 ---
 
-### `add` — 添加清单条目
+### `item` — 清单条目管理
+
+清单条目级操作命令组。
+
+#### `item new` — 添加清单条目
 
 ```
-pinchtask add <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
+pinchtask item new <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
 ```
 
 | 参数 | 说明 |
@@ -196,15 +171,41 @@ pinchtask add <TASK_ID> <TITLE> [-d <DESC>] [-p <PLAN>]
 **示例：**
 
 ```bash
-pinchtask add 550e "设计数据库表结构" -d "users 表和 sessions 表" -p "先完成 ER 图"
+pinchtask item new 550e "设计数据库表结构" -d "users 表和 sessions 表" -p "先完成 ER 图"
 ```
 
 ---
 
-### `check` — 切换清单条目完成状态
+#### `item edit` — 编辑清单条目
 
 ```
-pinchtask check <TASK_ID> <INDEX>
+pinchtask item edit <TASK_ID> <INDEX> [-t <TITLE>] [-d <DESC>] [-p <PLAN>] [--done] [--undone]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<TASK_ID>` | 任务 ID（支持短前缀） |
+| `<INDEX>` | 清单条目索引（0 起始） |
+| `-t, --title <TITLE>` | 新标题 |
+| `-d, --description <DESC>` | 新描述 |
+| `-p, --plan <PLAN>` | 新计划 |
+| `--done` | 标记为已完成 |
+| `--undone` | 标记为未完成 |
+
+> `--done` 与 `--undone` 互斥。
+
+**示例：**
+
+```bash
+pinchtask item edit 550e 1 -t "新标题" --done
+```
+
+---
+
+#### `item check` — 切换清单条目完成状态
+
+```
+pinchtask item check <TASK_ID> <INDEX>
 ```
 
 | 参数 | 说明 |
@@ -218,18 +219,18 @@ pinchtask check <TASK_ID> <INDEX>
 
 ```bash
 # 将第 1 个条目标记为已完成
-pinchtask check 550e 0
+pinchtask item check 550e 0
 
 # 再次执行将标记回未完成
-pinchtask check 550e 0
+pinchtask item check 550e 0
 ```
 
 ---
 
-### `mv` — 移动清单条目顺序
+#### `item mv` — 移动清单条目顺序
 
 ```
-pinchtask mv <TASK_ID> <FROM> <TO>
+pinchtask item mv <TASK_ID> <FROM> <TO>
 ```
 
 | 参数 | 说明 |
@@ -244,15 +245,36 @@ pinchtask mv <TASK_ID> <FROM> <TO>
 
 ```bash
 # 将第 3 个条目移到第 1 个位置
-pinchtask mv 550e 2 0
+pinchtask item mv 550e 2 0
 ```
 
 ---
 
-### `summary` — 查看清单进度摘要
+#### `item rm` — 删除清单条目
 
 ```
-pinchtask summary <TASK_ID>
+pinchtask item rm <TASK_ID> <INDEX>
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<TASK_ID>` | 任务 ID（支持短前缀） |
+| `<INDEX>` | 清单条目索引（0 起始） |
+
+仅删除指定条目，不影响任务本身。
+
+**示例：**
+
+```bash
+pinchtask item rm 550e 0
+```
+
+---
+
+#### `item summary` — 查看清单进度摘要
+
+```
+pinchtask item summary <TASK_ID>
 ```
 
 | 参数 | 说明 |
@@ -264,15 +286,17 @@ pinchtask summary <TASK_ID>
 **示例：**
 
 ```bash
-pinchtask summary 550e
+pinchtask item summary 550e
 ```
 
 ---
 
-### `note` — 添加笔记
+### `note` — 笔记管理
+
+#### `note new` — 添加笔记
 
 ```
-pinchtask note <TASK_ID> <CONTENT>
+pinchtask note new <TASK_ID> <CONTENT>
 ```
 
 | 参数 | 说明 |
@@ -285,42 +309,17 @@ pinchtask note <TASK_ID> <CONTENT>
 **示例：**
 
 ```bash
-pinchtask note 550e "发现 JWT 库版本与项目不兼容，需要升级"
+pinchtask note new 550e "发现 JWT 库版本与项目不兼容，需要升级"
 ```
 
 ---
 
-### `tag` — 设置标签和元数据
+### `link` — 资源引用管理
+
+#### `link new` — 添加资源引用
 
 ```
-pinchtask tag <TASK_ID> [TAGS] [--priority <P>] [--eta <TIME>]
-```
-
-| 参数 | 说明 |
-|------|------|
-| `<TASK_ID>` | 任务 ID（支持短前缀） |
-| `[TAGS]` | 标签，逗号分隔（可选，不传则保留现有标签） |
-| `--priority <P>` | 优先级：`high` / `medium` / `low` |
-| `--eta <TIME>` | 预计完成时间，ISO 8601 格式 |
-
-所有选项均为可选，只更新传入的字段。
-
-**示例：**
-
-```bash
-# 设置标签和优先级
-pinchtask tag 550e "bug,urgent" --priority high
-
-# 仅更新预计完成时间
-pinchtask tag 550e --eta "2025-01-15T18:00:00"
-```
-
----
-
-### `link` — 添加资源引用
-
-```
-pinchtask link <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
+pinchtask link new <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
 ```
 
 | 参数 | 说明 |
@@ -333,7 +332,133 @@ pinchtask link <TASK_ID> --name <NAME> --url <URL> [-d <DESC>]
 **示例：**
 
 ```bash
-pinchtask link 550e --name "API 文档" --url "https://example.com/api" -d "REST API 参考文档"
+pinchtask link new 550e --name "API 文档" --url "https://example.com/api" -d "REST API 参考文档"
+```
+
+---
+
+### `project` — 项目管理
+
+项目级操作命令组。每个任务最多属于一个项目，删除项目时任务自动解除关联。
+
+#### `project new` — 创建项目
+
+```
+pinchtask project new <NAME> [-d <DESC>]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<NAME>` | 项目名称（必填） |
+| `-d, --description <DESC>` | 项目描述 |
+
+**示例：**
+
+```bash
+pinchtask project new "后端重构" -d "Q2 季度后端架构升级项目"
+```
+
+---
+
+#### `project ls` — 列出项目
+
+```
+pinchtask project ls
+```
+
+无参数。显示所有项目及其基本信息。
+
+**示例：**
+
+```bash
+pinchtask project ls
+```
+
+---
+
+#### `project show` — 查看项目详情
+
+```
+pinchtask project show <ID>
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<ID>` | 项目 ID（支持短前缀） |
+
+显示项目详情及关联的任务列表。
+
+**示例：**
+
+```bash
+pinchtask project show 550e
+```
+
+---
+
+#### `project rm` — 删除项目
+
+```
+pinchtask project rm <ID> [--with-tasks]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<ID>` | 项目 ID（支持短前缀） |
+| `--with-tasks` | 同时删除关联的所有任务 |
+
+默认情况下仅删除项目，关联的任务保留并自动解除关联。使用 `--with-tasks` 可同时删除所有关联任务。
+
+**示例：**
+
+```bash
+# 仅删除项目，任务保留
+pinchtask project rm 550e
+
+# 删除项目及其所有任务
+pinchtask project rm 550e --with-tasks
+```
+
+---
+
+#### `project add-task` — 将任务添加到项目
+
+```
+pinchtask project add-task <PROJECT_ID> <TASK_ID>
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<PROJECT_ID>` | 项目 ID（支持短前缀） |
+| `<TASK_ID>` | 任务 ID（支持短前缀） |
+
+将任务关联到指定项目。若任务已属于其他项目，将自动从原项目移除。
+
+**示例：**
+
+```bash
+pinchtask project add-task 550e 660f
+```
+
+---
+
+#### `project rm-task` — 将任务从项目移除
+
+```
+pinchtask project rm-task <PROJECT_ID> <TASK_ID>
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<PROJECT_ID>` | 项目 ID（支持短前缀） |
+| `<TASK_ID>` | 任务 ID（支持短前缀） |
+
+将任务从项目中移除，任务本身不删除。
+
+**示例：**
+
+```bash
+pinchtask project rm-task 550e 660f
 ```
 
 ---
@@ -463,5 +588,5 @@ pinchtask completion fish > ~/.config/fish/completions/pinchtask.fish
 |--------|------|
 | `0` | 成功 |
 | `1` | 一般错误（未被分类的错误） |
-| `2` | 任务未找到（`NotFound`） |
-| `3` | IO 错误 / 数据损坏 / 配置错误 |
+| `2` | 任务/项目未找到 |
+| `3` | IO 错误 / 数据库错误 / 配置错误 |
