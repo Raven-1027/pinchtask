@@ -127,6 +127,7 @@ enum Commands {
     /// 添加资源引用
     Link(resource::LinkArgs),
     /// 启动交互式 TUI 界面
+    #[cfg(feature = "tui")]
     Tui,
     /// 启动 MCP 服务器（stdio 传输）
     Serve,
@@ -155,6 +156,7 @@ pub async fn run() -> Result<()> {
     // Serve、Tui 和 Completion 不需要 TaskStore，直接处理
     match command {
         Commands::Serve => return server::run(data_dir).await,
+        #[cfg(feature = "tui")]
         Commands::Tui => return crate::tui::run(data_dir).await,
         Commands::Completion(args) => {
             let mut cmd = Cli::command();
@@ -204,6 +206,9 @@ pub async fn run() -> Result<()> {
         Commands::Tag(args) => meta::run_tag(args, &store, json).await,
         Commands::Link(args) => resource::run_link(args, &store, json).await,
         // 已在上方 match 中提前返回，不会到达
+        #[cfg(feature = "tui")]
         Commands::Serve | Commands::Tui | Commands::Completion(_) => unreachable!(),
+        #[cfg(not(feature = "tui"))]
+        Commands::Serve | Commands::Completion(_) => unreachable!(),
     }
 }

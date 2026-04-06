@@ -10,4 +10,5 @@ pub mod models;
 pub mod server;
 pub mod store;
 pub mod tools;
+#[cfg(feature = "tui")]
 pub mod tui;
