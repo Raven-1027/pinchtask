@@ -5,9 +5,9 @@
 > [!WARNING]  
 > 几乎所有代码都由 GLM-5-Turbo 生成, 本程序按原样提供 不做任何保障.
 
-基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。
+为 AI Agent 与人类的协同工作提供结构化的任务管理能力.
 
-支持 **CLI 本地操作**, **TUI** 和 **MCP 服务器** 三种使用模式，共享同一套核心业务逻辑与数据存储。
+支持 **CLI 本地操作**, **TUI** 和 **MCP 服务器** 三种使用模式, 共享同一套核心业务逻辑与数据存储.
 
 ## 功能特性
 
@@ -20,14 +20,14 @@
 - **短 ID 匹配** — CLI 支持输入 UUID 前 4+ 位即可定位任务
 - **双模式运行** — CLI 直接操作 / MCP stdio 服务器供 AI Agent 调用
 - **JSON 输出** — 所有查询类命令支持 `--json` 标志输出机器可读格式
-- **交互式 TUI** — 基于 ratatui 的终端界面，支持键盘导航、实时搜索、任务管理
+- **可选的交互式 TUI** — 基于 ratatui 的终端界面, 支持键盘导航, 实时搜索, 任务管理
 
 ## 安装
 
 ### 从源码构建
 
 ```bash
-# 需要 Rust 1.70+ 和 Cargo
+# 需要 Rust 1.88+ 和 Cargo
 git clone https://github.com/Raven-1027/pinchtask.git
 cd pinchtask
 cargo build --release
@@ -93,15 +93,14 @@ pinchtask [OPTIONS] [COMMAND]
   link        资源引用管理 (add, rm)
   project     项目管理 (new, ls, show, edit, rm, add-task, rm-task)
   serve       启动 MCP 服务器
-  tui         启动交互式 TUI 界面
   completion  生成 shell 补全脚本
 ```
 
-> 完整命令参数说明请参考 [CLI 参考文档](docs/cli-reference.md)。
+> 完整命令参数说明请参考 [CLI 参考文档](docs/cli-reference.md).
 
 ## MCP 配置
 
-在支持 MCP 的 AI 客户端（如 Claude Desktop、Cursor 等）中配置：
+在支持 MCP 的 AI 客户端 (如 Claude Desktop、Cursor 等) 中配置:
 
 ```json
 {
@@ -117,7 +116,7 @@ pinchtask [OPTIONS] [COMMAND]
 }
 ```
 
-或直接使用 `pinchtask`（无子命令时默认启动服务器模式）：
+或直接使用 `pinchtask`(无子命令时默认启动服务器模式):
 
 ```json
 {
@@ -129,7 +128,7 @@ pinchtask [OPTIONS] [COMMAND]
 }
 ```
 
-服务器通过 **stdio** 传输协议与客户端通信，支持：
+服务器通过 **stdio** 传输协议与客户端通信，支持:
 
 - 换行分隔 JSON 格式
 - `Content-Length` 头格式
@@ -138,7 +137,7 @@ pinchtask [OPTIONS] [COMMAND]
 
 ## TUI 交互式界面
 
-通过 `pinchtask tui` 启动基于终端的交互式界面，使用键盘快捷键管理任务。
+通过 `pinchtask tui` 启动基于终端的交互式界面, 使用键盘快捷键管理任务.
 
 ### 启动
 
@@ -198,14 +197,14 @@ pinchtask tui -D /path/to/data
 
 ## 数据存储
 
-任务数据存储在 SQLite 数据库文件中：
+任务数据存储在 SQLite 数据库文件中:
 
 ```
 ~/.pinchtask/
 └── tasks.db
 ```
 
-数据库采用混合范式化设计：`tasks` 主表存储任务基本信息，`checklist_items`、`notes`、`resources` 为独立关联表，`metadata` 以 JSON 列存储。可通过 `-D` 参数或 `PINCHTASK_DATA_DIR` 环境变量自定义数据目录。任务与项目为一对多关系，每个任务最多属于一个项目（通过 `tasks.project_id` 外键关联），删除项目时任务自动解除关联。
+数据库采用混合范式化设计: `tasks` 主表存储任务基本信息, `checklist_items`、`notes`、`resources` 为独立关联表, `metadata` 以 JSON 列存储. 可通过 `-D` 参数或 `PINCHTASK_DATA_DIR` 环境变量自定义数据目录. 任务与项目为一对多关系, 每个任务最多属于一个项目 (通过 `tasks.project_id` 外键关联), 删除项目时任务自动解除关联.
 
 ## 开发指南
 
@@ -277,16 +276,7 @@ AI Agent → MCP ──────┘
 用户 → TUI ──────────┘
 ```
 
-所有业务逻辑集中在 `core/` 层，CLI、TUI 和 MCP 工具分别作为适配层调用 core 函数，保证行为一致性。
-
-### 退出码
-
-| 退出码 | 含义                       |
-| ------ | -------------------------- |
-| 0      | 成功                       |
-| 1      | 一般错误                   |
-| 2      | 任务/项目未找到            |
-| 3      | IO / 数据库错误 / 配置错误 |
+所有业务逻辑集中在 `core/` 层，CLI, TUI 和 MCP 工具分别作为适配层调用 core 函数, 保证行为一致性.
 
 ## 许可证
 
