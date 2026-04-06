@@ -16,6 +16,7 @@ use serde::Deserialize;
 
 /// 初始化任务时的清单条目输入。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Default)]
 pub struct InitialChecklistItem {
     #[schemars(description = "Short name for the checklist item")]
     pub task: String,
@@ -32,17 +33,6 @@ pub struct InitialChecklistItem {
     pub id: Option<String>,
 }
 
-impl Default for InitialChecklistItem {
-    fn default() -> Self {
-        Self {
-            task: String::new(),
-            detailed_description: String::new(),
-            context_and_plan: None,
-            done: false,
-            id: None,
-        }
-    }
-}
 
 /// 资源引用输入。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -58,6 +48,7 @@ pub struct ResourceInput {
 
 /// 任务元数据输入。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Default)]
 pub struct TaskMetadataInput {
     #[serde(default)]
     #[schemars(description = "Tag list")]
@@ -70,15 +61,6 @@ pub struct TaskMetadataInput {
     pub estimated_completion_time: Option<String>,
 }
 
-impl Default for TaskMetadataInput {
-    fn default() -> Self {
-        Self {
-            tags: None,
-            priority: None,
-            estimated_completion_time: None,
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // 工具参数结构体（按 server.rs 中 register_builtin_tools 的顺序）
@@ -420,7 +402,7 @@ fn resolve_refs(schema: &mut serde_json::Value) {
 /// - `#/$defs/TypeName`
 /// - `#/definitions/TypeName`
 fn extract_def_name(ref_uri: &str) -> String {
-    ref_uri.split('/').last().unwrap_or("").to_string()
+    ref_uri.split('/').next_back().unwrap_or("").to_string()
 }
 
 /// 在 schema 的 `$defs` 或 `definitions` 中查找指定名称的定义。

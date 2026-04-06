@@ -129,6 +129,7 @@ impl TaskStore {
     /// 自动生成 UUID v4、ISO 8601 时间戳。
     ///
     /// 如果提供了 `project_id`，任务创建时直接关联到指定项目。
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_task(
         &self,
         task_description: &str,
