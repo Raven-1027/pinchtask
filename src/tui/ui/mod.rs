@@ -338,8 +338,12 @@ fn draw_right_task_list(f: &mut Frame, area: Rect, app: &App, _is_focused: bool)
 
     // 任务行（只渲染可见范围）
     let desc_width = 20usize;
-    for i in visible_start..visible_end {
-        let task = tasks[i];
+    for (i, task) in tasks
+        .iter()
+        .enumerate()
+        .take(visible_end)
+        .skip(visible_start)
+    {
         let is_selected = i == selected;
 
         let marker = if is_selected {

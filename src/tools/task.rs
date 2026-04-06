@@ -47,14 +47,15 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        let task =
-            core::add_checklist_item(&store, &task.id, "步骤1", "详细描述", Some("计划"))
-                .await
-                .expect("添加清单条目失败");
+        let task = core::add_checklist_item(&store, &task.id, "步骤1", "详细描述", Some("计划"))
+            .await
+            .expect("添加清单条目失败");
         assert_eq!(task.checklist.len(), 1);
         assert!(!task.checklist[0].done);
 
-        let task = core::mark_task_done(&store, &task.id, 0).await.expect("标记完成失败");
+        let task = core::mark_task_done(&store, &task.id, 0)
+            .await
+            .expect("标记完成失败");
         assert!(task.checklist[0].done);
     }
 
@@ -66,12 +67,20 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        let task = core::add_note(&store, &task.id, "一条笔记").await.expect("添加笔记失败");
+        let task = core::add_note(&store, &task.id, "一条笔记")
+            .await
+            .expect("添加笔记失败");
         assert_eq!(task.notes, vec!["一条笔记"]);
 
-        let task = core::add_resource(&store, &task.id, "文档", "https://example.com", Some("示例"))
-            .await
-            .expect("添加资源失败");
+        let task = core::add_resource(
+            &store,
+            &task.id,
+            "文档",
+            "https://example.com",
+            Some("示例"),
+        )
+        .await
+        .expect("添加资源失败");
         assert_eq!(task.resources.len(), 1);
         assert_eq!(task.resources[0].name, "文档");
     }

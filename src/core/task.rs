@@ -72,10 +72,7 @@ pub async fn clear_task(store: &TaskStore, task_id: &str) -> Result<(), StoreErr
 }
 
 /// 获取任务的清单概要（含完成状态）。
-pub async fn get_checklist_summary(
-    store: &TaskStore,
-    task_id: &str,
-) -> Result<String, StoreError> {
+pub async fn get_checklist_summary(store: &TaskStore, task_id: &str) -> Result<String, StoreError> {
     let task = store.get_task(task_id).await?;
     let total = task.checklist.len();
     let done = task.checklist.iter().filter(|i| i.done).count();
@@ -129,18 +126,9 @@ mod tests {
     #[tokio::test]
     async fn initialize_task_basic() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(
-            &store,
-            "基础任务",
-            None,
-            vec![],
-            vec![],
-            vec![],
-            None,
-            None,
-        )
-        .await
-        .expect("创建任务失败");
+        let task = initialize_task(&store, "基础任务", None, vec![], vec![], vec![], None, None)
+            .await
+            .expect("创建任务失败");
 
         assert!(!task.id.is_empty());
         assert_eq!(task.task_description, "基础任务");
@@ -198,18 +186,9 @@ mod tests {
     #[tokio::test]
     async fn initialize_task_empty_description() {
         let (store, _dir) = temp_store().await;
-        let task = initialize_task(
-            &store,
-            "",
-            None,
-            vec![],
-            vec![],
-            vec![],
-            None,
-            None,
-        )
-        .await
-        .expect("创建任务失败");
+        let task = initialize_task(&store, "", None, vec![], vec![], vec![], None, None)
+            .await
+            .expect("创建任务失败");
         assert_eq!(task.task_description, "");
     }
 
@@ -217,18 +196,9 @@ mod tests {
     async fn initialize_task_long_description() {
         let (store, _dir) = temp_store().await;
         let long_desc = "x".repeat(10_000);
-        let task = initialize_task(
-            &store,
-            &long_desc,
-            None,
-            vec![],
-            vec![],
-            vec![],
-            None,
-            None,
-        )
-        .await
-        .expect("创建任务失败");
+        let task = initialize_task(&store, &long_desc, None, vec![], vec![], vec![], None, None)
+            .await
+            .expect("创建任务失败");
         assert_eq!(task.task_description.len(), 10_000);
     }
 
@@ -274,10 +244,7 @@ mod tests {
         let updated = update_context(&store, &task.id, "新的上下文")
             .await
             .expect("更新上下文失败");
-        assert_eq!(
-            updated.context_for_all_tasks,
-            Some("新的上下文".to_owned())
-        );
+        assert_eq!(updated.context_for_all_tasks, Some("新的上下文".to_owned()));
     }
 
     #[tokio::test]
@@ -335,9 +302,7 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        clear_task(&store, &task.id)
-            .await
-            .expect("删除任务失败");
+        clear_task(&store, &task.id).await.expect("删除任务失败");
         assert!(store.get_task(&task.id).await.is_err());
     }
 

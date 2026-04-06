@@ -68,9 +68,7 @@ impl<'a> Widget for ProjectForm<'a> {
 
             // 标签样式
             let label_style = if *focused {
-                Style::default()
-                    .fg(ACCENT)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(MUTED)
             };

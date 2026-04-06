@@ -171,7 +171,7 @@ impl<'a> Widget for TaskDetail<'a> {
             let item_name_width = total_width
                 .saturating_sub(ITEM_PREFIX_WIDTH)
                 .saturating_sub(4);
-            let item_name_width = item_name_width.max(10).min(DEFAULT_ITEM_NAME_WIDTH * 2);
+            let item_name_width = item_name_width.clamp(10, DEFAULT_ITEM_NAME_WIDTH * 2);
 
             for (i, item) in visible_items {
                 let is_selected = i == self.selected_item_index;

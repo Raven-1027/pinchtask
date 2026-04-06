@@ -123,15 +123,11 @@ pub async fn reorder_checklist_item(
 ) -> Result<crate::models::task::Task, StoreError> {
     let mut task = store.get_task(task_id).await?;
     if from_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "源索引越界: {from_index}"
-        )));
+        return Err(StoreError::NotFound(format!("源索引越界: {from_index}")));
     }
     // to_index 允许等于 checklist.len()（追加到末尾），但不能更大
     if to_index > task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "目标索引越界: {to_index}"
-        )));
+        return Err(StoreError::NotFound(format!("目标索引越界: {to_index}")));
     }
     let item = task.checklist.remove(from_index);
     // 标准做法：先 remove，然后 min(to_index, len) 作为插入点
@@ -159,11 +155,7 @@ mod tests {
     }
 
     /// 辅助：创建一个包含 3 个条目的测试任务，返回 (store, task)。
-    async fn task_with_3_items() -> (
-        TaskStore,
-        tempfile::TempDir,
-        crate::models::task::Task,
-    ) {
+    async fn task_with_3_items() -> (TaskStore, tempfile::TempDir, crate::models::task::Task) {
         let (store, dir) = temp_store().await;
         let items: Vec<ChecklistItem> = (0..3)
             .map(|i| ChecklistItem {
@@ -193,15 +185,9 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        let result = add_checklist_item(
-            &store,
-            &task.id,
-            "新条目",
-            "详细说明",
-            Some("计划"),
-        )
-        .await
-        .expect("添加条目失败");
+        let result = add_checklist_item(&store, &task.id, "新条目", "详细说明", Some("计划"))
+            .await
+            .expect("添加条目失败");
 
         assert_eq!(result.checklist.len(), 1);
         assert_eq!(result.checklist[0].task, "新条目");
@@ -274,17 +260,9 @@ mod tests {
         let (store, _dir, task) = task_with_3_items().await;
 
         // 只更新 task_name
-        let result = update_checklist_item(
-            &store,
-            &task.id,
-            0,
-            Some("仅改名称"),
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect("更新条目失败");
+        let result = update_checklist_item(&store, &task.id, 0, Some("仅改名称"), None, None, None)
+            .await
+            .expect("更新条目失败");
 
         assert_eq!(result.checklist[0].task, "仅改名称");
         assert_eq!(result.checklist[0].detailed_description, "描述0");
@@ -295,17 +273,9 @@ mod tests {
         let (store, _dir, task) = task_with_3_items().await;
 
         // 先设置 context_and_plan
-        let _ = update_checklist_item(
-            &store,
-            &task.id,
-            0,
-            None,
-            None,
-            Some(Some("有计划")),
-            None,
-        )
-        .await
-        .expect("更新条目失败");
+        let _ = update_checklist_item(&store, &task.id, 0, None, None, Some(Some("有计划")), None)
+            .await
+            .expect("更新条目失败");
 
         // 再清空 context_and_plan
         let result = update_checklist_item(
@@ -342,16 +312,8 @@ mod tests {
     #[tokio::test]
     async fn update_checklist_item_nonexistent_task() {
         let (store, _dir) = temp_store().await;
-        let result = update_checklist_item(
-            &store,
-            "不存在的ID",
-            0,
-            Some("x"),
-            None,
-            None,
-            None,
-        )
-        .await;
+        let result =
+            update_checklist_item(&store, "不存在的ID", 0, Some("x"), None, None, None).await;
         assert!(matches!(result, Err(StoreError::NotFound(_))));
     }
 

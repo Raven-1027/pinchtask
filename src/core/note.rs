@@ -60,11 +60,15 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        let result = add_note(&store, &task.id, "第一条笔记").await.expect("添加笔记失败");
+        let result = add_note(&store, &task.id, "第一条笔记")
+            .await
+            .expect("添加笔记失败");
         assert_eq!(result.notes, vec!["第一条笔记"]);
 
         // 再添加一条
-        let result = add_note(&store, &task.id, "第二条笔记").await.expect("添加笔记失败");
+        let result = add_note(&store, &task.id, "第二条笔记")
+            .await
+            .expect("添加笔记失败");
         assert_eq!(result.notes, vec!["第一条笔记", "第二条笔记"]);
     }
 
@@ -76,7 +80,9 @@ mod tests {
             .await
             .expect("创建任务失败");
 
-        add_note(&store, &task.id, "持久化笔记").await.expect("添加笔记失败");
+        add_note(&store, &task.id, "持久化笔记")
+            .await
+            .expect("添加笔记失败");
 
         // 重新从数据库加载验证
         let reloaded = store.get_task(&task.id).await.expect("获取任务失败");

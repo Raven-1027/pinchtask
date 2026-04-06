@@ -61,20 +61,14 @@ pub enum ProjectCommands {
 // ---------------------------------------------------------------------------
 
 /// 分发项目子命令。
-pub async fn run_project(
-    command: &ProjectCommands,
-    store: &TaskStore,
-    json: bool,
-) -> Result<()> {
+pub async fn run_project(command: &ProjectCommands, store: &TaskStore, json: bool) -> Result<()> {
     match command {
         ProjectCommands::New { name, description } => {
             run_create(store, name, description.as_deref(), json).await
         }
         ProjectCommands::Ls => run_list(store, json).await,
         ProjectCommands::Show { id } => run_show(store, id, json).await,
-        ProjectCommands::Rm { id, with_tasks } => {
-            run_delete(store, id, *with_tasks, json).await
-        }
+        ProjectCommands::Rm { id, with_tasks } => run_delete(store, id, *with_tasks, json).await,
         ProjectCommands::AddTask {
             project_id,
             task_id,
@@ -95,11 +89,14 @@ async fn run_create(
 ) -> Result<()> {
     let project = core::create_project(store, name, description).await?;
     if json {
-        let json_str =
-            serde_json::to_string_pretty(&project).expect("序列化 Project 不应失败");
+        let json_str = serde_json::to_string_pretty(&project).expect("序列化 Project 不应失败");
         println!("{json_str}");
     } else {
-        println!("项目已创建: {} ({})", project.name, &project.id[..8.min(project.id.len())]);
+        println!(
+            "项目已创建: {} ({})",
+            project.name,
+            &project.id[..8.min(project.id.len())]
+        );
     }
     Ok(())
 }
@@ -108,18 +105,14 @@ async fn run_create(
 async fn run_list(store: &TaskStore, json: bool) -> Result<()> {
     let projects = core::list_projects(store).await?;
     if json {
-        let json_str =
-            serde_json::to_string_pretty(&projects).expect("序列化 Projects 不应失败");
+        let json_str = serde_json::to_string_pretty(&projects).expect("序列化 Projects 不应失败");
         println!("{json_str}");
     } else if projects.is_empty() {
         println!("当前没有任何项目");
     } else {
         for project in &projects {
             let short_id = &project.id[..8.min(project.id.len())];
-            let desc = project
-                .description
-                .as_deref()
-                .unwrap_or("");
+            let desc = project.description.as_deref().unwrap_or("");
             if desc.is_empty() {
                 println!("{}  {}", short_id, project.name);
             } else {
@@ -177,12 +170,7 @@ async fn run_show(store: &TaskStore, id: &str, json: bool) -> Result<()> {
 }
 
 /// 删除项目。
-async fn run_delete(
-    store: &TaskStore,
-    id: &str,
-    with_tasks: bool,
-    json: bool,
-) -> Result<()> {
+async fn run_delete(store: &TaskStore, id: &str, with_tasks: bool, json: bool) -> Result<()> {
     let projects = core::list_projects(store).await?;
     let full_id = resolve_project_id(id, &projects)?;
 

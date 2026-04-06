@@ -487,7 +487,9 @@ mod tests {
 
     #[test]
     fn min_size_constants_reasonable() {
-        assert!(MIN_WIDTH >= 40);
-        assert!(MIN_HEIGHT >= 10);
+        const {
+            assert!(MIN_WIDTH >= 40);
+            assert!(MIN_HEIGHT >= 10);
+        }
     }
 }

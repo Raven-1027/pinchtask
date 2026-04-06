@@ -3,8 +3,8 @@
 //! 测试 PinchTaskServer 的 ServerHandler 实现、工具注册、以及端到端工具调用。
 //! 核心业务逻辑的详细测试见 src/tools/task.rs 中的单元测试。
 
-use rmcp::ServerHandler;
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::ServerHandler;
 use tempfile::TempDir;
 
 use pinchtask::server::PinchTaskServer;
@@ -73,10 +73,7 @@ async fn test_all_9_tools_registered() {
         assert!(tool.is_some(), "工具 '{name}' 应已注册");
         let tool = tool.unwrap();
         assert_eq!(tool.name, *name, "工具名称应匹配");
-        assert!(
-            tool.description.is_some(),
-            "工具 '{name}' 应有 description"
-        );
+        assert!(tool.description.is_some(), "工具 '{name}' 应有 description");
         assert!(
             !tool.description.as_ref().unwrap().is_empty(),
             "工具 '{name}' 的 description 不应为空"
@@ -140,8 +137,7 @@ async fn test_initialize_task_creates_task() {
     assert!(!result.content.is_empty(), "content 不应为空");
 
     let text = extract_text(&result).expect("应有 text 内容");
-    let task: serde_json::Value =
-        serde_json::from_str(&text).expect("text 应为合法 JSON");
+    let task: serde_json::Value = serde_json::from_str(&text).expect("text 应为合法 JSON");
 
     assert_eq!(task["task_description"], "集成测试任务");
     assert_eq!(task["context_for_all_tasks"], "测试上下文信息");
@@ -264,7 +260,7 @@ async fn test_list_tasks_after_creating_two() {
                 notes: None,
                 resources: None,
                 metadata: None,
-            project_id: None,
+                project_id: None,
             }))
             .await
             .unwrap();
@@ -671,10 +667,7 @@ async fn test_update_metadata() {
     let text = extract_text(&result).unwrap();
     let task: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(task["metadata"]["priority"], "high");
-    assert_eq!(
-        task["metadata"]["estimated_completion_time"],
-        "2025-12-31"
-    );
+    assert_eq!(task["metadata"]["estimated_completion_time"], "2025-12-31");
     let tags = task["metadata"]["tags"].as_array().unwrap();
     assert_eq!(tags.len(), 2);
 }
@@ -816,10 +809,7 @@ async fn test_update_checklist_item_partial() {
     let task: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(task["checklist"][0]["task"], "新名称");
     assert_eq!(task["checklist"][0]["detailed_description"], "原始描述");
-    assert_eq!(
-        task["checklist"][0]["context_and_plan"],
-        "原始计划"
-    );
+    assert_eq!(task["checklist"][0]["context_and_plan"], "原始计划");
 
     // 用 null 清空 context_and_plan
     let result = server

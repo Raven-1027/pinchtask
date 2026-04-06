@@ -55,15 +55,18 @@ pub async fn run_link(command: &LinkCommands, store: &TaskStore, json: bool) -> 
 async fn run_link_new(args: &LinkNewArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.task_id, &tasks)?;
-    let _task =
-        core::add_resource(store, &full_id, &args.name, &args.url, args.description.as_deref()).await?;
+    let _task = core::add_resource(
+        store,
+        &full_id,
+        &args.name,
+        &args.url,
+        args.description.as_deref(),
+    )
+    .await?;
 
     let short_id = &full_id[..8.min(full_id.len())];
     output::print(
-        output::Output::Success(format!(
-            "资源 \"{}\" 已添加到任务 {short_id}",
-            args.name
-        )),
+        output::Output::Success(format!("资源 \"{}\" 已添加到任务 {short_id}", args.name)),
         json,
     );
     Ok(())
