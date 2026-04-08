@@ -5,6 +5,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] - 2026-04-06
+
+### Added
+
+- `update_task` MCP 工具新增 `project_id` 参数，支持关联或解除任务与项目的关系
+- `list_tasks` MCP 工具新增 `project_id` 过滤参数，支持按项目筛选任务
+- MCP 协议文档（docs/en/mcp.md 和 docs/zh/mcp.md）新增项目关联使用示例
+
+### Changed
+
+- 更新 AGENT.md 中 `update_task` 和 `list_tasks` 工具描述，标注项目关联支持
+- 集成测试覆盖项目关联功能
+
 ## [0.2.0] - 2026-04-06
 
 ### Added
@@ -46,6 +59,7 @@
 - 删除 TUI `project_detail.rs`（功能合并到左栏项目列表）
 - 删除独立的 ProjectList/ProjectDetail/ProjectForm 视图（由分栏布局替代）
 
+[0.2.1]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.2.0
 
 ## [0.1.0] - 2026-04-04
