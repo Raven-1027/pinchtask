@@ -130,13 +130,13 @@ pinchtask/
 | 工具名                     | 功能                                                 |
 | -------------------------- | ---------------------------------------------------- |
 | `new_task`                 | 创建新任务（支持初始清单/笔记/资源/元数据/项目关联） |
-| `update_task`              | 统一更新多个任务字段                                 |
+| `update_task`              | 统一更新多个任务字段（含项目关联）                   |
 | `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）        |
 | `add_note`                 | 添加笔记                                             |
 | `add_resource`             | 添加资源引用                                         |
 | `get_checklist_summary`    | 获取清单进度摘要                                     |
 | `clear_task`               | 删除任务                                             |
-| `list_tasks`               | 列出所有任务                                         |
+| `list_tasks`               | 列出所有任务（支持按项目过滤）                       |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）        |
 
 ### CLI 命令（嵌套子命令结构）

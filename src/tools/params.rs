@@ -84,7 +84,9 @@ pub struct InitializeTaskParams {
     pub metadata: Option<TaskMetadataInput>,
 
     #[serde(default)]
-    #[schemars(description = "Optional project ID to associate the task with at creation time")]
+    #[schemars(
+        description = "Optional project ID to associate the task with at creation time. Use manage_project (action: \"list\") to find available project IDs."
+    )]
     pub project_id: Option<String>,
 }
 
@@ -108,6 +110,11 @@ pub struct UpdateTaskParams {
     #[serde(default)]
     #[schemars(description = "Estimated completion time (ISO timestamp or duration)")]
     pub eta: Option<String>,
+    #[serde(default)]
+    #[schemars(
+        description = "Optional project ID to associate the task with. Pass project_id to assign to a project, pass null to remove from any project."
+    )]
+    pub project_id: Option<Option<String>>,
 }
 
 /// Action type for checklist item operations.
@@ -236,7 +243,13 @@ pub struct ClearTaskParams {
 
 /// `list_tasks` 参数（无额外参数）。
 #[derive(Debug, Deserialize, JsonSchema, Default)]
-pub struct ListTasksParams {}
+pub struct ListTasksParams {
+    #[serde(default)]
+    #[schemars(
+        description = "Optional project ID to filter tasks by project. When provided, only tasks belonging to the specified project are returned."
+    )]
+    pub project_id: Option<String>,
+}
 
 /// Action type for project operations.
 ///

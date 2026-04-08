@@ -161,11 +161,23 @@ Create a new task with a description, optional checklist items, notes, resources
 }
 ```
 
+**Example with project association:**
+
+```json
+{
+  "task_description": "Fix login bug",
+  "project_id": "def67890-1234-5678-abcd-ef0123456789",
+  "metadata": {
+    "priority": "high"
+  }
+}
+```
+
 ---
 
 ### `update_task`
 
-Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. At least one field must be provided.
+Update task-level fields: description, context, priority, tags, estimated completion time, and/or project association. Only specified fields are modified. At least one field must be provided.
 
 **Parameters:**
 
@@ -177,8 +189,27 @@ Update task-level fields: description, context, priority, tags, and/or estimated
 | `priority` | `string` | No | Priority level: `high` / `medium` / `low` |
 | `tags` | `string` | No | Comma-separated tags (e.g., `"backend,auth,urgent"`) |
 | `eta` | `string` | No | Estimated completion time (ISO timestamp or duration) |
+| `project_id` | `string` or `null` | No | Project ID to associate the task with. Pass a project UUID to assign, pass `null` to remove from project, omit to keep unchanged |
 
 **Returns:** The updated task object as JSON.
+
+**Example — Assign task to a project:**
+
+```json
+{
+  "task_id": "abc12345-...",
+  "project_id": "def67890-..."
+}
+```
+
+**Example — Remove task from project:**
+
+```json
+{
+  "task_id": "abc12345-...",
+  "project_id": null
+}
+```
 
 ---
 
@@ -318,19 +349,29 @@ Delete a task by its ID. **This is an irreversible operation.** Confirm the `tas
 
 ### `list_tasks`
 
-List all tasks sorted by creation time. Call at the start of a session to get an overview of all existing tasks and their progress.
+List all tasks sorted by creation time. Call at the start of a session to get an overview of all existing tasks and their progress. Optionally provide `project_id` to filter tasks belonging to a specific project.
 
 **Parameters:**
 
-None.
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `project_id` | `string` | No | Filter tasks by project ID. Only tasks belonging to the specified project are returned. |
 
 **Returns:** A concise text summary of all tasks (not full details). Use `new_task` or individual task queries for full information.
+
+**Example — Filter by project:**
+
+```json
+{
+  "project_id": "def67890-..."
+}
+```
 
 ---
 
 ### `manage_project`
 
-Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.
+Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project. Typical workflow: use `list` to find existing projects, then create tasks under a project via `new_task` (with `project_id`), or assign existing tasks via `update_task` (with `project_id`).
 
 **Parameters:**
 

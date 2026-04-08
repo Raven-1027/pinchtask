@@ -267,7 +267,7 @@ async fn test_list_tasks_after_creating_two() {
     }
 
     let result = server
-        .list_tasks(Parameters(ListTasksParams {}))
+        .list_tasks(Parameters(ListTasksParams { project_id: None }))
         .await
         .unwrap();
 
@@ -423,6 +423,7 @@ async fn test_update_task_unified() {
             priority: Some("high".to_owned()),
             tags: Some("tag1,tag2".to_owned()),
             eta: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -467,6 +468,7 @@ async fn test_update_task_with_no_fields_returns_error() {
             priority: None,
             tags: None,
             eta: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -660,6 +662,7 @@ async fn test_update_metadata() {
             priority: Some("high".to_owned()),
             tags: Some("rust,mcp".to_owned()),
             eta: Some("2025-12-31".to_owned()),
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -701,6 +704,7 @@ async fn test_update_context_and_description() {
             priority: None,
             tags: None,
             eta: None,
+            project_id: None,
         }))
         .await
         .unwrap();
@@ -717,6 +721,7 @@ async fn test_update_context_and_description() {
             priority: None,
             tags: None,
             eta: None,
+            project_id: None,
         }))
         .await
         .unwrap();

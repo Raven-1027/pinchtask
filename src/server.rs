@@ -106,7 +106,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "new_task",
-        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints).",
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints). Optionally provide project_id to associate the task with a project at creation time.",
         input_schema = crate::tools::params::json_schema_for::<InitializeTaskParams>()
     )]
     pub async fn new_task(
@@ -162,7 +162,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_task",
-        description = "Update task-level fields: description, context, priority, tags, and/or estimated completion time. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. At least one field must be specified.",
+        description = "Update task-level fields: description, context, priority, tags, estimated completion time, and/or project association. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. Set project_id to a project UUID to assign the task to that project, or set project_id to null to remove the task from its current project. At least one field must be specified.",
         input_schema = crate::tools::params::json_schema_for::<UpdateTaskParams>()
     )]
     pub async fn update_task(
@@ -174,9 +174,10 @@ impl PinchTaskServer {
             && params.priority.is_none()
             && params.tags.is_none()
             && params.eta.is_none()
+            && params.project_id.is_none()
         {
             return Ok(text_result(
-                "至少需要指定一个可修改的字段 (task_description / context_for_all_tasks / priority / tags / eta)"
+                "至少需要指定一个可修改的字段 (task_description / context_for_all_tasks / priority / tags / eta / project_id)"
                     .to_owned(),
                 true,
             ));
@@ -222,6 +223,15 @@ impl PinchTaskServer {
                 metadata.estimated_completion_time = Some(e.clone());
             }
             match core::update_metadata(&self.store, &params.task_id, metadata).await {
+                Ok(_) => {}
+                Err(e) => return Ok(text_result(format!("{e}"), true)),
+            }
+        }
+
+        // 更新 project_id
+        if let Some(project_id) = params.project_id {
+            match core::set_task_project(&self.store, &params.task_id, project_id.as_deref()).await
+            {
                 Ok(_) => {}
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             }
@@ -385,15 +395,38 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "list_tasks",
-        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details."
+        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details. Optionally provide project_id to filter tasks belonging to a specific project."
     )]
     pub async fn list_tasks(
         &self,
-        Parameters(_params): Parameters<ListTasksParams>,
+        Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        core::list_tasks_summary(&self.store)
-            .await
-            .into_tool_result(|s| text_result(s, false))
+        if let Some(project_id) = params.project_id {
+            core::get_tasks_for_project(&self.store, &project_id)
+                .await
+                .into_tool_result(|tasks| {
+                    if tasks.is_empty() {
+                        text_result("该项目下没有任何任务".to_owned(), false)
+                    } else {
+                        let mut summary = String::new();
+                        for task in &tasks {
+                            let total = task.checklist.len();
+                            let done = task.checklist.iter().filter(|i| i.done).count();
+                            summary.push_str(&format!(
+                                "ID: {}\n任务: {}\n进度: {done}/{total}\n创建时间: {}\n\n",
+                                &task.id[..8.min(task.id.len())],
+                                task.task_description,
+                                task.created_at
+                            ));
+                        }
+                        text_result(summary, false)
+                    }
+                })
+        } else {
+            core::list_tasks_summary(&self.store)
+                .await
+                .into_tool_result(|s| text_result(s, false))
+        }
     }
 
     // ------------------------------------------------------------------
@@ -401,7 +434,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "manage_project",
-        description = "Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.\n\nSelect the action based on what you need:\n\n- \"create\": Create a new project. Provide name (required) and description (optional).\n\n- \"get\": Get a project by its ID. Provide project_id.\n\n- \"update\": Update a project's name and/or description. Provide project_id and the fields to change.\n\n- \"delete\": Delete a project. Provide project_id. Set delete_tasks=true to also delete all associated tasks (otherwise tasks are kept with project_id cleared).\n\n- \"list\": List all projects. No additional parameters needed.\n\nThis is the single entry point for all project operations.",
+        description = "Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.\n\nTypical workflow: use \"list\" to find existing projects, then use new_task (with project_id) to create tasks under a project, or use update_task (with project_id) to assign existing tasks to a project.\n\nSelect the action based on what you need:\n\n- \"create\": Create a new project. Provide name (required) and description (optional).\n\n- \"get\": Get a project by its ID. Provide project_id.\n\n- \"update\": Update a project's name and/or description. Provide project_id and the fields to change.\n\n- \"delete\": Delete a project. Provide project_id. Set delete_tasks=true to also delete all associated tasks (otherwise tasks are kept with project_id cleared).\n\n- \"list\": List all projects. No additional parameters needed.\n\nThis is the single entry point for all project operations.",
         input_schema = crate::tools::params::json_schema_for::<ManageProjectParams>()
     )]
     pub async fn manage_project(
