@@ -93,7 +93,7 @@ pinchtask serve -D /path/to/data
 
 ### new_task
 
-创建新任务，支持同时设置初始清单、笔记、资源和元数据。
+创建新任务，支持同时设置初始清单、笔记、资源和元数据。可通过 `project_id` 参数将任务关联到已有项目。
 
 **参数：**
 
@@ -163,7 +163,7 @@ pinchtask serve -D /path/to/data
 
 ### update_task
 
-更新任务的描述、上下文或元数据字段。仅修改指定的字段，未指定的字段保持不变。至少需要指定一个可修改字段。
+更新任务的描述、上下文、元数据或项目关联字段。仅修改指定的字段，未指定的字段保持不变。至少需要指定一个可修改字段。
 
 **参数：**
 
@@ -175,6 +175,7 @@ pinchtask serve -D /path/to/data
 | `priority` | string | 否 | 优先级：`high` / `medium` / `low` |
 | `tags` | string | 否 | 逗号分隔的标签 |
 | `eta` | string | 否 | 预计完成时间（ISO 时间戳或时长描述） |
+| `project_id` | string or null | 否 | 项目 ID。传入项目 UUID 将任务关联到该项目，传入 `null` 解除关联，不传则不变 |
 
 **示例：**
 
@@ -183,6 +184,24 @@ pinchtask serve -D /path/to/data
   "task_id": "a1b2c3d4-...",
   "priority": "high",
   "tags": "后端,认证,紧急"
+}
+```
+
+**关联项目示例：**
+
+```json
+{
+  "task_id": "a1b2c3d4-...",
+  "project_id": "e5f6a7b8-..."
+}
+```
+
+**解除项目关联示例：**
+
+```json
+{
+  "task_id": "a1b2c3d4-...",
+  "project_id": null
 }
 ```
 
@@ -341,9 +360,13 @@ pinchtask serve -D /path/to/data
 
 ### list_tasks
 
-列出所有任务，按创建时间排序。返回简洁摘要，不包含完整详情。
+列出所有任务，按创建时间排序。返回简洁摘要，不包含完整详情。提供 `project_id` 可筛选指定项目下的任务。
 
-**参数：** 无
+**参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `project_id` | string | 否 | 按项目 ID 过滤任务，仅返回指定项目下的任务 |
 
 **示例：**
 
@@ -351,11 +374,21 @@ pinchtask serve -D /path/to/data
 {}
 ```
 
+**按项目过滤示例：**
+
+```json
+{
+  "project_id": "e5f6a7b8-..."
+}
+```
+
 ---
 
 ### manage_project
 
 统一管理项目，支持创建、查看、更新、删除和列表操作。每个任务最多属于一个项目。
+
+典型工作流：先使用 `list` 查看现有项目，然后通过 `new_task`（指定 `project_id`）在新项目下创建任务，或通过 `update_task`（指定 `project_id`）将已有任务分配到项目。
 
 **参数：**
 

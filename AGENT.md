@@ -5,9 +5,9 @@
 **pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 **CLI 本地操作**、**MCP 服务器** 和 **交互式 TUI** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
 - **语言**: Rust (Edition 2021)
-- **版本**: 0.2.0
+- **版本**: 0.2.1
 - **许可证**: MIT
-- **代码量**: ~11500 行 Rust 代码
+- **代码量**: ~11600 行 Rust 代码
 - **构建状态**: 编译通过，104 个测试全部通过（86 单元测试 + 18 集成测试）
 
 ## 技术栈
@@ -130,13 +130,13 @@ pinchtask/
 | 工具名                     | 功能                                                 |
 | -------------------------- | ---------------------------------------------------- |
 | `new_task`                 | 创建新任务（支持初始清单/笔记/资源/元数据/项目关联） |
-| `update_task`              | 统一更新多个任务字段                                 |
+| `update_task`              | 统一更新多个任务字段（含项目关联）                   |
 | `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）        |
 | `add_note`                 | 添加笔记                                             |
 | `add_resource`             | 添加资源引用                                         |
 | `get_checklist_summary`    | 获取清单进度摘要                                     |
 | `clear_task`               | 删除任务                                             |
-| `list_tasks`               | 列出所有任务                                         |
+| `list_tasks`               | 列出所有任务（支持按项目过滤）                       |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）        |
 
 ### CLI 命令（嵌套子命令结构）
