@@ -4,11 +4,11 @@
 
 **pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 **CLI 本地操作**、**MCP 服务器** 和 **交互式 TUI** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
-- **语言**: Rust (Edition 2021)
-- **版本**: 0.2.1
+- **语言**: Rust (Edition 2024)
+- **版本**: 0.3.0
 - **许可证**: MIT
-- **代码量**: ~11600 行 Rust 代码
-- **构建状态**: 编译通过，104 个测试全部通过（86 单元测试 + 18 集成测试）
+- **代码量**: ~12000 行 Rust 代码
+- **构建状态**: 编译通过，114 个测试全部通过（96 单元测试 + 18 集成测试）
 
 ## 技术栈
 
@@ -25,8 +25,8 @@
 | rmcp               | 1.3.0    | MCP 协议实现（`#[tool]` 宏、ServerHandler、ToolRouter） |
 | schemars           | 1.2.1    | JSON Schema 自动生成（MCP 工具 inputSchema）            |
 | sqlx               | 0.8      | SQLite 异步数据库驱动                                   |
-| ratatui            | 0.29     | TUI 框架（终端 UI 渲染，可选 feature）                  |
-| crossterm          | 0.28     | 终端控制（raw mode、事件、光标）                        |
+| ratatui            | 0.30.0   | TUI 框架（终端 UI 渲染，可选 feature）                  |
+| crossterm          | 0.29.0   | 终端控制（raw mode、事件、光标）                        |
 
 ## 项目结构
 
@@ -44,7 +44,8 @@ pinchtask/
 │   │   ├── note.rs          # 笔记操作
 │   │   ├── project.rs       # 项目级操作（CRUD + 任务关联）
 │   │   ├── resolve.rs       # 短 ID 前缀匹配（CLI/MCP 共享）
-│   │   └── resource.rs      # 资源操作
+│   │   ├── resource.rs      # 资源操作
+│   │   ├── workspace.rs     # 工作区发现（.pinchproject 搜索与解析）
 │   ├── models/              # 数据模型
 │   │   ├── mod.rs           # 模块入口
 │   │   ├── task.rs          # Task, ChecklistItem, Resource, TaskMetadata
@@ -140,6 +141,18 @@ pinchtask/
 | `list_tasks`               | 列出所有任务（支持按项目过滤）。project_id 支持短 ID 前缀匹配 |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）。project_id 支持短 ID 前缀匹配 |
 
+### 工作区自动关联
+
+在项目根目录放置 `.pinchproject` 文件（内容为项目 UUID），CLI/TUI/MCP 操作时自动注入 `project_id`。
+
+| 前端 | 自动注入行为 |
+|------|------------|
+| CLI | `task new` / `task ls` 未指定 `--project` 时自动使用 `.pinchproject` 中的项目 ID |
+| TUI | 启动时自动选中 `.pinchproject` 指定的项目 |
+| MCP | `new_task` / `list_tasks` 未指定 `project_id` 时自动使用服务器启动目录的 `.pinchproject` |
+
+优先级：显式指定 > `.pinchproject` 文件 > 无项目（None）
+
 ### CLI 命令（嵌套子命令结构）
 
 | 顶层命令     | 子命令                                                   |
@@ -210,6 +223,7 @@ Project {
 - 短 ID 前缀匹配
 - JSON 输出模式（`--json`）
 - Shell 补全脚本生成
+- `.pinchproject` 工作区自动关联（CLI/TUI/MCP 三端支持）
 
 ### ⚠️ 已知问题
 

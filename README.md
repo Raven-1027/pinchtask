@@ -21,6 +21,7 @@
 - **双模式运行** — CLI 直接操作 / MCP stdio 服务器供 AI Agent 调用
 - **JSON 输出** — 所有查询类命令支持 `--json` 标志输出机器可读格式
 - **可选的交互式 TUI** — 基于 ratatui 的终端界面, 支持键盘导航, 实时搜索, 任务管理
+- **工作区关联** — 通过 `.pinchproject` 文件自动关联项目，CLI/TUI/MCP 三端支持
 
 ## 安装
 
@@ -73,6 +74,20 @@ pinchtask
 # 或显式指定
 pinchtask serve
 ```
+
+### 工作区项目关联
+
+在项目根目录创建 `.pinchproject` 文件，内容为项目 UUID：
+
+```bash
+# 先创建项目
+pinchtask project new "我的项目"
+
+# 在项目根目录创建 .pinchproject 文件
+echo "项目UUID" > .pinchproject
+```
+
+此后在该目录及子目录中执行 `task new`、`task ls` 等命令时，会自动关联到该项目。显式指定 `--project` 始终优先。
 
 ## CLI 用法
 
@@ -129,6 +144,8 @@ pinchtask tui
 # 或指定数据目录
 pinchtask tui -D /path/to/data
 ```
+
+如果当前目录或上级目录存在 `.pinchproject` 文件，TUI 启动时会自动选中对应项目。
 
 > 完整快捷键与视图说明请参考 [TUI 使用文档](docs/zh/tui.md).
 

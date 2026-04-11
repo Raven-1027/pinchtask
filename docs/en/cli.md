@@ -485,6 +485,24 @@ pinchtask completion zsh > ~/.zsh/completions/_pinchtask
 
 ---
 
+## Workspace Project Association (.pinchproject)
+
+Place a `.pinchproject` file in your project root directory containing the project UUID (supports `#` comments):
+
+```
+# .pinchproject
+550e8400-e29b-41d4-a716-446655440000
+```
+
+When running CLI commands from this directory (or any subdirectory), the project ID from the file is automatically used:
+
+- `task new` — If `--project` is not specified, the task is automatically associated with the project from `.pinchproject`
+- `task ls` — If `--project` is not specified, tasks are automatically filtered by that project
+
+**Priority**: Explicit `--project` > `.pinchproject` > No project
+
+The system searches upward from the current directory for `.pinchproject` files and uses the nearest one.
+
 ## Short ID Matching
 
 Instead of typing the full UUID, you can use the first 4+ characters of a task or project ID. The system will:

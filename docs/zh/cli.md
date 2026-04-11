@@ -16,6 +16,24 @@ pinchtask 提供完整的命令行界面，支持任务的创建、查询、编�
 | `-q, --quiet` | 安静模式（等价于 `--log-level error`），与 `--verbose` 互斥 |
 | `--json` | 以 JSON 格式输出（适用于查询类命令） |
 
+## 工作区项目关联（.pinchproject）
+
+在项目根目录放置 `.pinchproject` 文件，内容为项目 UUID（支持 `#` 注释）：
+
+```
+# .pinchproject
+550e8400-e29b-41d4-a716-446655440000
+```
+
+当从该目录或子目录执行 CLI 命令时，自动使用文件中的项目 ID：
+
+- `task new` — 未指定 `--project` 时自动关联到 `.pinchproject` 指定的项目
+- `task ls` — 未指定 `--project` 时自动按该项目过滤任务
+
+**优先级**：显式 `--project` > `.pinchproject` > 无项目
+
+系统从当前目录向上逐级搜索 `.pinchproject` 文件，使用最近（最靠近当前目录）的那个。
+
 ## 短 ID 匹配
 
 所有需要任务 ID 或项目 ID 的命令都支持短前缀匹配：输入 UUID 的前 4 位及以上即可定位目标。当前缀匹配到多个结果时，会提示歧义并列出候选项。

@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-04-11
+
+### Added
+
+- `.pinchproject` 工作区自动关联功能：在项目根目录放置 `.pinchproject` 文件（含项目 UUID），CLI/TUI/MCP 操作时自动注入 `project_id`
+- `core::workspace` 模块：从当前目录向上搜索 `.pinchproject` 文件并解析项目 ID
+- CLI `task new` / `task ls` 未指定 `--project` 时自动使用 `.pinchproject` 中的项目 ID
+- TUI 启动时自动选中 `.pinchproject` 指定的项目
+- MCP 服务器 `new_task` / `list_tasks` 未指定 `project_id` 时自动使用 `.pinchproject` 中的项目 ID
+- 优先级规则：显式指定 > `.pinchproject` 文件 > 无项目
+
 ## [0.2.1] - 2026-04-06
 
 ### Added
@@ -59,6 +70,7 @@
 - 删除 TUI `project_detail.rs`（功能合并到左栏项目列表）
 - 删除独立的 ProjectList/ProjectDetail/ProjectForm 视图（由分栏布局替代）
 
+[0.3.0]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.2.0
 

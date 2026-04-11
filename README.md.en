@@ -21,6 +21,7 @@ Supports three usage modes: **CLI local operations**, **TUI**, and **MCP server*
 - **Dual Mode** — Direct CLI operations / MCP stdio server for AI Agent invocation
 - **JSON Output** — All query commands support the `--json` flag for machine-readable output
 - **Interactive TUI** — Terminal interface based on ratatui with keyboard navigation, real-time search, and task management
+- **Workspace Association** — Automatically associate projects via `.pinchproject` file, supported across CLI/TUI/MCP
 
 ## Installation
 
@@ -73,6 +74,20 @@ pinchtask
 # Or explicitly specify
 pinchtask serve
 ```
+
+### Workspace Project Association
+
+Create a `.pinchproject` file in your project root directory containing the project UUID:
+
+```bash
+# First create a project
+pinchtask project new "My Project"
+
+# Create .pinchproject file in the project root
+echo "PROJECT_UUID" > .pinchproject
+```
+
+When running `task new`, `task ls`, and other commands from this directory (or any subdirectory), tasks are automatically associated with that project. Explicit `--project` flag always takes priority.
 
 ## CLI Usage
 
@@ -129,6 +144,8 @@ pinchtask tui
 # Or specify a data directory
 pinchtask tui -D /path/to/data
 ```
+
+If a `.pinchproject` file exists in the current directory or any parent directory, the TUI automatically selects the corresponding project on startup.
 
 > For full shortcuts and view details, see the [TUI Documentation](docs/en/tui.md).
 
