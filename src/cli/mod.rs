@@ -91,6 +91,12 @@ pub async fn run() -> Result<()> {
     let json = cli.json;
     let data_dir = cli.data_dir;
 
+    // 从工作区 .pinchproject 文件发现项目 ID
+    let workspace_project_id = crate::core::discover_project_id();
+    if let Some(ref pid) = workspace_project_id {
+        tracing::info!(project_id = %pid, "auto-detected workspace project from .pinchproject");
+    }
+
     let command = match cli.command {
         Some(cmd) => cmd,
         None => {
@@ -103,7 +109,7 @@ pub async fn run() -> Result<()> {
     match command {
         Commands::Serve => return server::run(data_dir).await,
         #[cfg(feature = "tui")]
-        Commands::Tui => return crate::tui::run(data_dir).await,
+        Commands::Tui => return crate::tui::run(data_dir, workspace_project_id).await,
         Commands::Completion(args) => {
             let mut cmd = Cli::command();
             generate(args.shell, &mut cmd, "pinchtask", &mut io::stdout());
@@ -116,7 +122,9 @@ pub async fn run() -> Result<()> {
     let store = TaskStore::new(data_dir).await?;
 
     match &command {
-        Commands::Task(cmd) => task::run_task(cmd, &store, json).await,
+        Commands::Task(cmd) => {
+            task::run_task(cmd, &store, json, workspace_project_id.as_deref()).await
+        }
         Commands::Item(cmd) => item::run_item(cmd, &store, json).await,
         Commands::Note(cmd) => note::run_note(cmd, &store, json).await,
         Commands::Link(cmd) => link::run_link(cmd, &store, json).await,

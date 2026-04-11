@@ -59,6 +59,7 @@ pinchtask task ls [OPTIONS]
 | `--long` | `-l` | Detailed mode (shows priority, tags, creation date). |
 | `--limit <N>` | `-n` | Maximum number of tasks to display (default: 10). |
 | `--sort <FIELD>` | | Sort field: `time` (default), `priority`, `progress`. |
+| `--project <ID>` | `-p` | Filter by project (short ID prefix supported). |
 
 **Default behavior:** Shows active tasks (tasks with no checklist, or tasks with at least one incomplete item).
 
@@ -76,6 +77,12 @@ pinchtask task ls --done --sort priority
 
 # Show up to 50 tasks
 pinchtask task ls -n 50
+
+# Filter by project
+pinchtask task ls -p abcd1234
+
+# Filter by project, show all tasks
+pinchtask task ls --all -p abcd1234
 ```
 
 #### `task show` — View Task Details

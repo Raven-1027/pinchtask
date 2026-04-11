@@ -80,6 +80,7 @@ pinchtask task ls [OPTIONS]
 | `-l, --long` | 详细模式（显示更多列） |
 | `-n, --limit <数量>` | 限制显示数量（默认: 10） |
 | `--sort <字段>` | 排序字段：`time`（默认）、`priority`、`progress` |
+| `-p, --project <项目ID>` | 按项目筛选，只显示该项目下的任务（支持短前缀） |
 
 默认只显示未完成任务（无清单条目，或存在未完成条目的任务）。
 
@@ -100,6 +101,12 @@ pinchtask task ls --sort progress
 
 # 只显示已完成任务
 pinchtask task ls --done
+
+# 按项目筛选
+pinchtask task ls -p b1c2d3e4
+
+# 按项目筛选并显示全部
+pinchtask task ls --all -p b1c2d3e4
 ```
 
 ### `task show` — 查看任务详情

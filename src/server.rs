@@ -28,14 +28,20 @@ use crate::tools::params::*;
 pub struct PinchTaskServer {
     store: Arc<TaskStore>,
     tool_router: ToolRouter<Self>,
+    workspace_project_id: Option<String>,
 }
 
 impl PinchTaskServer {
     /// 创建新的 MCP 服务器实例。
     pub fn new(store: TaskStore) -> Self {
+        let workspace_project_id = crate::core::discover_project_id();
+        if let Some(ref pid) = workspace_project_id {
+            tracing::info!("MCP 服务器: 检测到 .pinchproject，自动关联项目 {}", pid);
+        }
         Self {
             store: Arc::new(store),
             tool_router: Self::tool_router(),
+            workspace_project_id,
         }
     }
 }
@@ -143,6 +149,12 @@ impl PinchTaskServer {
             estimated_completion_time: m.estimated_completion_time,
         });
 
+        // 显式 project_id 优先，否则使用 workspace 自动关联
+        let effective_project_id = params
+            .project_id
+            .as_deref()
+            .or(self.workspace_project_id.as_deref());
+
         core::initialize_task(
             &self.store,
             &params.task_description,
@@ -151,7 +163,7 @@ impl PinchTaskServer {
             params.notes.unwrap_or_default(),
             resources,
             metadata,
-            params.project_id.as_deref(),
+            effective_project_id,
         )
         .await
         .into_tool_result(|t| task_to_result(&t))
@@ -432,9 +444,15 @@ impl PinchTaskServer {
         &self,
         Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        if let Some(project_id) = params.project_id {
+        // 显式 project_id 优先，否则使用 workspace 自动关联
+        let effective_project = params
+            .project_id
+            .as_deref()
+            .or(self.workspace_project_id.as_deref());
+
+        if let Some(project_id) = effective_project {
             let full_project_id =
-                match core::resolve_project_id_async(&self.store, &project_id, 10).await {
+                match core::resolve_project_id_async(&self.store, project_id, 10).await {
                     Ok(id) => id,
                     Err(e) => return Ok(text_result(format!("{e}"), true)),
                 };

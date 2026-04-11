@@ -480,6 +480,8 @@ pub struct App {
     project_tasks: Vec<Task>,
     /// 项目表单状态
     project_form_state: Option<ProjectFormState>,
+    /// 启动时自动选中的项目 ID（来自 CLI workspace 检测）
+    initial_project_id: Option<String>,
 
     // ── 资源输入缓冲 ──────────────────────────────────────────────────
     /// 添加资源时暂存名称（AddingResourceName 完成后保存，AddingResourceUrl 完成后使用）
@@ -500,7 +502,7 @@ pub struct App {
 
 impl App {
     /// 创建新的应用状态。
-    pub fn new(data_dir: Option<PathBuf>) -> Self {
+    pub fn new(data_dir: Option<PathBuf>, initial_project_id: Option<String>) -> Self {
         Self {
             data_dir,
             focused_pane: FocusedPane::Left,
@@ -524,6 +526,7 @@ impl App {
             project_scroll_offset: 0,
             project_tasks: Vec::new(),
             project_form_state: None,
+            initial_project_id,
             resource_name_buffer: String::new(),
             should_quit: false,
             message: None,
@@ -2567,8 +2570,17 @@ impl App {
                 }
                 self.message = Some(format!("已加载 {} 个项目", self.projects.len()));
                 self.error_message = None;
-                // 首次加载项目时，自动选中第一个项目并加载其任务
+                // 首次加载项目时，自动选中项目并加载其任务
                 if !had_projects && !self.projects.is_empty() {
+                    // 优先匹配 workspace 指定的项目
+                    if let Some(ref pid) = self.initial_project_id {
+                        if let Some(idx) = self.projects.iter().position(|p| p.id == *pid) {
+                            self.project_selected_index = idx;
+                            tracing::info!("自动选中项目: {}", self.projects[idx].name);
+                        } else {
+                            tracing::warn!(".pinchproject 指定的项目 ID {} 未在数据库中找到", pid);
+                        }
+                    }
                     self.spawn_load_project_tasks_for_selected_project();
                 }
             }
@@ -2961,7 +2973,7 @@ mod tests {
 
     #[test]
     fn app_new_defaults() {
-        let app = App::new(None);
+        let app = App::new(None, None);
         assert_eq!(app.focused_pane(), &FocusedPane::Left);
         assert_eq!(app.right_pane_view(), &RightPaneView::TaskList);
         assert_eq!(app.overlay(), &Overlay::None);
@@ -2987,14 +2999,14 @@ mod tests {
 
     #[test]
     fn app_filtered_and_sorted_tasks_empty() {
-        let app = App::new(None);
+        let app = App::new(None, None);
         let result = app.filtered_and_sorted_tasks();
         assert!(result.is_empty());
     }
 
     #[test]
     fn app_set_focused_pane() {
-        let mut app = App::new(None);
+        let mut app = App::new(None, None);
         assert_eq!(app.focused_pane(), &FocusedPane::Left);
         app.set_focused_pane(FocusedPane::Right);
         assert_eq!(app.focused_pane(), &FocusedPane::Right);
@@ -3004,7 +3016,7 @@ mod tests {
 
     #[test]
     fn app_set_right_pane_view() {
-        let mut app = App::new(None);
+        let mut app = App::new(None, None);
         assert_eq!(app.right_pane_view(), &RightPaneView::TaskList);
         app.set_right_pane_view(RightPaneView::Help);
         assert_eq!(app.right_pane_view(), &RightPaneView::Help);
