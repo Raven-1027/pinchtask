@@ -89,6 +89,15 @@ pinchtask serve -D /path/to/data
 }
 ```
 
+## 短 ID 前缀匹配
+
+所有接受 `task_id` 或 `project_id` 参数的工具都支持 UUID 短前缀匹配。你可以只输入 UUID 的前 4 位以上字符，系统会自动匹配唯一的结果。
+
+- 前缀长度不足 4 位时会报错。
+- 唯一匹配时自动解析为完整 UUID。
+- 无匹配时报错"未找到"。
+- 多个匹配时返回前 10 个候选任务/项目列表，提示输入更多字符以消除歧义。
+
 ## 工具列表
 
 ### new_task
@@ -105,7 +114,7 @@ pinchtask serve -D /path/to/data
 | `notes` | array of string | 否 | 初始笔记列表 |
 | `resources` | array | 否 | 初始资源引用列表 |
 | `metadata` | object | 否 | 任务元数据 |
-| `project_id` | string | 否 | 关联的项目 ID |
+| `project_id` | string | 否 | 关联的项目 ID（支持短 ID 前缀匹配） |
 
 **`initial_checklist` 条目结构：**
 
@@ -169,13 +178,13 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | 是 | 任务 ID |
+| `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `task_description` | string | 否 | 新的任务描述 |
 | `context_for_all_tasks` | string | 否 | 新的共享上下文 |
 | `priority` | string | 否 | 优先级：`high` / `medium` / `low` |
 | `tags` | string | 否 | 逗号分隔的标签 |
 | `eta` | string | 否 | 预计完成时间（ISO 时间戳或时长描述） |
-| `project_id` | string or null | 否 | 项目 ID。传入项目 UUID 将任务关联到该项目，传入 `null` 解除关联，不传则不变 |
+| `project_id` | string or null | 否 | 项目 ID（支持短 ID 前缀匹配）。传入项目 UUID 将任务关联到该项目，传入 `null` 解除关联，不传则不变 |
 
 **示例：**
 
@@ -216,7 +225,7 @@ pinchtask serve -D /path/to/data
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `action` | string | 是 | 操作类型：`add` / `update` / `reorder` / `remove` |
-| `task_id` | string | 是 | 任务 ID |
+| `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `task` | string | `add` 时必填 | 条目简短名称 |
 | `detailed_description` | string | `add` 时必填 | 详细描述 |
 | `index` | number | `update` / `remove` 时必填 | 条目索引（0-based） |
@@ -276,7 +285,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | 是 | 任务 ID |
+| `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `content` | string | 是 | 笔记内容 |
 
 **示例：**
@@ -298,7 +307,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | 是 | 任务 ID |
+| `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `name` | string | 是 | 资源名称 |
 | `url` | string | 是 | 资源 URL 或文件路径 |
 | `description` | string | 否 | 资源描述 |
@@ -324,7 +333,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | 是 | 任务 ID |
+| `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `include_descriptions` | boolean | 否 | 是否包含详细描述（默认 `false`） |
 
 **示例：**
@@ -346,7 +355,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `task_id` | string | 是 | 要删除的任务 ID |
+| `task_id` | string | 是 | 要删除的任务 ID（支持短 ID 前缀匹配） |
 
 **示例：**
 
@@ -366,7 +375,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `project_id` | string | 否 | 按项目 ID 过滤任务，仅返回指定项目下的任务 |
+| `project_id` | string | 否 | 按项目 ID 过滤任务，仅返回指定项目下的任务（支持短 ID 前缀匹配） |
 
 **示例：**
 
@@ -395,7 +404,7 @@ pinchtask serve -D /path/to/data
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `action` | string | 是 | 操作类型：`create` / `get` / `update` / `delete` / `list` |
-| `project_id` | string | `get` / `update` / `delete` 时必填 | 项目 ID |
+| `project_id` | string | `get` / `update` / `delete` 时必填 | 项目 ID（支持短 ID 前缀匹配） |
 | `name` | string | `create` 时必填，`update` 时可选 | 项目名称 |
 | `description` | string | 否 | 项目描述 |
 | `delete_tasks` | boolean | 否 | 删除项目时是否同时删除关联任务（仅 `delete` 时有效，默认 `false`） |

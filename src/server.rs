@@ -106,7 +106,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "new_task",
-        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints). Optionally provide project_id to associate the task with a project at creation time.",
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints). Tag is sequence of strings. Optionally provide project_id to associate the task with a project at creation time.",
         input_schema = crate::tools::params::json_schema_for::<InitializeTaskParams>()
     )]
     pub async fn new_task(
@@ -162,13 +162,19 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "update_task",
-        description = "Update task-level fields: description, context, priority, tags, estimated completion time, and/or project association. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. Set project_id to a project UUID to assign the task to that project, or set project_id to null to remove the task from its current project. At least one field must be specified.",
+        description = "Update task-level fields: description, context, priority, tags, estimated completion time, and/or project association. Only specified fields are modified. Usage: This is the single entry point for all task-level updates. Set project_id to a project UUID to assign the task to that project, or set project_id to null to remove the task from its current project. At least one field must be specified. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<UpdateTaskParams>()
     )]
     pub async fn update_task(
         &self,
         Parameters(params): Parameters<UpdateTaskParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+
         if params.task_description.is_none()
             && params.context_for_all_tasks.is_none()
             && params.priority.is_none()
@@ -185,21 +191,21 @@ impl PinchTaskServer {
 
         // 更新 description
         if let Some(desc) = &params.task_description {
-            match core::update_task_description(&self.store, &params.task_id, desc).await {
+            match core::update_task_description(&self.store, &full_id, desc).await {
                 Ok(_) => {}
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             }
         }
         // 更新 context
         if let Some(ctx) = &params.context_for_all_tasks {
-            match core::update_context(&self.store, &params.task_id, ctx).await {
+            match core::update_context(&self.store, &full_id, ctx).await {
                 Ok(_) => {}
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             }
         }
         // 更新 metadata
         if params.priority.is_some() || params.tags.is_some() || params.eta.is_some() {
-            let existing = match self.store.get_task(&params.task_id).await {
+            let existing = match self.store.get_task(&full_id).await {
                 Ok(t) => t,
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             };
@@ -222,7 +228,7 @@ impl PinchTaskServer {
             if let Some(e) = &params.eta {
                 metadata.estimated_completion_time = Some(e.clone());
             }
-            match core::update_metadata(&self.store, &params.task_id, metadata).await {
+            match core::update_metadata(&self.store, &full_id, metadata).await {
                 Ok(_) => {}
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             }
@@ -230,14 +236,13 @@ impl PinchTaskServer {
 
         // 更新 project_id
         if let Some(project_id) = params.project_id {
-            match core::set_task_project(&self.store, &params.task_id, project_id.as_deref()).await
-            {
+            match core::set_task_project(&self.store, &full_id, project_id.as_deref()).await {
                 Ok(_) => {}
                 Err(e) => return Ok(text_result(format!("{e}"), true)),
             }
         }
 
-        let task = match self.store.get_task(&params.task_id).await {
+        let task = match self.store.get_task(&full_id).await {
             Ok(t) => t,
             Err(e) => return Ok(text_result(format!("{e}"), true)),
         };
@@ -249,13 +254,19 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "manage_checklist_item",
-        description = "Perform operations on checklist items. NOTE: All checklist item indices are 0-based (the first item has index 0).\n\nSelect the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations.",
+        description = "Perform operations on checklist items. NOTE: All checklist item indices are 0-based (the first item has index 0).\n\nSelect the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<ManageChecklistItemParams>()
     )]
     pub async fn manage_checklist_item(
         &self,
         Parameters(params): Parameters<ManageChecklistItemParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+
         match params.action {
             Action::Add => {
                 let task = params.task.ok_or_else(|| {
@@ -270,7 +281,7 @@ impl PinchTaskServer {
                 let context_and_plan = params.context_and_plan.flatten();
                 core::add_checklist_item(
                     &self.store,
-                    &params.task_id,
+                    &full_id,
                     &task,
                     &detailed_description,
                     context_and_plan.as_deref(),
@@ -284,7 +295,7 @@ impl PinchTaskServer {
                 })? as usize;
                 core::update_checklist_item(
                     &self.store,
-                    &params.task_id,
+                    &full_id,
                     index,
                     params.task.as_deref(),
                     params.detailed_description.as_deref(),
@@ -301,7 +312,7 @@ impl PinchTaskServer {
                 let to_index = params.to_index.ok_or_else(|| {
                     ErrorData::invalid_params("to_index is required for reorder action", None)
                 })? as usize;
-                core::reorder_checklist_item(&self.store, &params.task_id, from_index, to_index)
+                core::reorder_checklist_item(&self.store, &full_id, from_index, to_index)
                     .await
                     .into_tool_result(|t| task_to_result(&t))
             }
@@ -309,7 +320,7 @@ impl PinchTaskServer {
                 let index = params.index.ok_or_else(|| {
                     ErrorData::invalid_params("index is required for remove action", None)
                 })? as usize;
-                core::remove_checklist_item(&self.store, &params.task_id, index)
+                core::remove_checklist_item(&self.store, &full_id, index)
                     .await
                     .into_tool_result(|t| task_to_result(&t))
             }
@@ -321,13 +332,18 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_note",
-        description = "Add a note to the task. Usage: Record discoveries, decisions, or context that doesn't fit into checklist items. Notes are append-only and useful for audit trails."
+        description = "Add a note to the task. Usage: Record discoveries, decisions, or context that doesn't fit into checklist items. Notes are append-only and useful for audit trails. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID)."
     )]
     pub async fn add_note(
         &self,
         Parameters(params): Parameters<AddNoteParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        core::add_note(&self.store, &params.task_id, &params.content)
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+        core::add_note(&self.store, &full_id, &params.content)
             .await
             .into_tool_result(|t| task_to_result(&t))
     }
@@ -337,16 +353,21 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "add_resource",
-        description = "Add a resource reference to the task (append-only). Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references.",
+        description = "Add a resource reference to the task (append-only). Usage: Link relevant files (use file:// or absolute path as url), documentation URLs, or API references. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<AddResourceParams>()
     )]
     pub async fn add_resource(
         &self,
         Parameters(params): Parameters<AddResourceParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
         core::add_resource(
             &self.store,
-            &params.task_id,
+            &full_id,
             &params.name,
             &params.url,
             params.description.as_deref(),
@@ -360,7 +381,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "get_checklist_summary",
-        description = "Get a summary of the task checklist with completion status. Usage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names.",
+        description = "Get a summary of the task checklist with completion status. Usage: Call for a quick progress overview. Set include_descriptions to true to see detailed descriptions alongside item names. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<GetChecklistSummaryParams>()
     )]
     pub async fn get_checklist_summary(
@@ -368,7 +389,12 @@ impl PinchTaskServer {
         Parameters(params): Parameters<GetChecklistSummaryParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let _include_descriptions = params.include_descriptions.unwrap_or(false);
-        core::get_checklist_summary(&self.store, &params.task_id)
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
+        core::get_checklist_summary(&self.store, &full_id)
             .await
             .into_tool_result(|s| text_result(s, false))
     }
@@ -378,15 +404,20 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "clear_task",
-        description = "Delete a task by its ID. Usage: Irreversible operation. Confirm the task_id before calling. Consider using get_checklist_summary to verify the task is the intended target."
+        description = "Delete a task by its ID. Usage: Irreversible operation. Confirm the task_id before calling. Consider using get_checklist_summary to verify the task is the intended target. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID)."
     )]
     pub async fn clear_task(
         &self,
         Parameters(params): Parameters<ClearTaskParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        // 解析短 ID 前缀
+        let full_id = match core::resolve_task_id_async(&self.store, &params.task_id, 10).await {
+            Ok(id) => id,
+            Err(e) => return Ok(text_result(format!("{e}"), true)),
+        };
         void_result(
-            core::clear_task(&self.store, &params.task_id).await,
-            format!("任务 {} 已删除", params.task_id),
+            core::clear_task(&self.store, &full_id).await,
+            format!("任务 {} 已删除", full_id),
         )
     }
 
@@ -395,14 +426,19 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "list_tasks",
-        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details. Optionally provide project_id to filter tasks belonging to a specific project."
+        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details. Optionally provide project_id to filter tasks belonging to a specific project. Both task IDs and project IDs support short ID prefix matching (minimum 4 characters of the UUID)."
     )]
     pub async fn list_tasks(
         &self,
         Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<CallToolResult, ErrorData> {
         if let Some(project_id) = params.project_id {
-            core::get_tasks_for_project(&self.store, &project_id)
+            let full_project_id =
+                match core::resolve_project_id_async(&self.store, &project_id, 10).await {
+                    Ok(id) => id,
+                    Err(e) => return Ok(text_result(format!("{e}"), true)),
+                };
+            core::get_tasks_for_project(&self.store, &full_project_id)
                 .await
                 .into_tool_result(|tasks| {
                     if tasks.is_empty() {
@@ -434,7 +470,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "manage_project",
-        description = "Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.\n\nTypical workflow: use \"list\" to find existing projects, then use new_task (with project_id) to create tasks under a project, or use update_task (with project_id) to assign existing tasks to a project.\n\nSelect the action based on what you need:\n\n- \"create\": Create a new project. Provide name (required) and description (optional).\n\n- \"get\": Get a project by its ID. Provide project_id.\n\n- \"update\": Update a project's name and/or description. Provide project_id and the fields to change.\n\n- \"delete\": Delete a project. Provide project_id. Set delete_tasks=true to also delete all associated tasks (otherwise tasks are kept with project_id cleared).\n\n- \"list\": List all projects. No additional parameters needed.\n\nThis is the single entry point for all project operations.",
+        description = "Perform operations on projects. Projects are containers for organizing related tasks. Each task can belong to at most one project.\n\nSelect the action based on what you need:\n\n- \"create\": Create a new project. Provide name (required) and description (optional).\n\n- \"get\": Get a project by its ID. Provide project_id.\n\n- \"update\": Update a project's name and/or description. Provide project_id.\n\n- \"delete\": Delete a project. Provide project_id. Set delete_tasks=true to also delete all associated tasks (otherwise tasks are kept with project_id cleared).\n\n- \"list\": List all projects. No additional parameters needed.\n\nThis is the single entry point for all project operations. The project_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<ManageProjectParams>()
     )]
     pub async fn manage_project(
@@ -458,7 +494,12 @@ impl PinchTaskServer {
                 let project_id = params.project_id.ok_or_else(|| {
                     ErrorData::invalid_params("project_id is required for get action", None)
                 })?;
-                core::get_project(&self.store, &project_id)
+                let full_project_id =
+                    match core::resolve_project_id_async(&self.store, &project_id, 10).await {
+                        Ok(id) => id,
+                        Err(e) => return Ok(text_result(format!("{e}"), true)),
+                    };
+                core::get_project(&self.store, &full_project_id)
                     .await
                     .into_tool_result(|p| {
                         let json = serde_json::to_string_pretty(&p)
@@ -470,9 +511,14 @@ impl PinchTaskServer {
                 let project_id = params.project_id.ok_or_else(|| {
                     ErrorData::invalid_params("project_id is required for update action", None)
                 })?;
+                let full_project_id =
+                    match core::resolve_project_id_async(&self.store, &project_id, 10).await {
+                        Ok(id) => id,
+                        Err(e) => return Ok(text_result(format!("{e}"), true)),
+                    };
                 core::update_project(
                     &self.store,
-                    &project_id,
+                    &full_project_id,
                     params.name.as_deref(),
                     params.description.as_deref(),
                 )
@@ -487,15 +533,20 @@ impl PinchTaskServer {
                 let project_id = params.project_id.ok_or_else(|| {
                     ErrorData::invalid_params("project_id is required for delete action", None)
                 })?;
+                let full_project_id =
+                    match core::resolve_project_id_async(&self.store, &project_id, 10).await {
+                        Ok(id) => id,
+                        Err(e) => return Ok(text_result(format!("{e}"), true)),
+                    };
                 if params.delete_tasks.unwrap_or(false) {
                     void_result(
-                        core::delete_project_with_tasks(&self.store, &project_id).await,
-                        format!("项目 {} 及其关联任务已删除", project_id),
+                        core::delete_project_with_tasks(&self.store, &full_project_id).await,
+                        format!("项目 {} 及其关联任务已删除", full_project_id),
                     )
                 } else {
                     void_result(
-                        core::delete_project(&self.store, &project_id).await,
-                        format!("项目 {} 已删除（关联任务保留）", project_id),
+                        core::delete_project(&self.store, &full_project_id).await,
+                        format!("项目 {} 已删除（关联任务保留）", full_project_id),
                     )
                 }
             }

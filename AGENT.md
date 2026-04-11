@@ -43,6 +43,7 @@ pinchtask/
 │   │   ├── item.rs          # 清单条目操作
 │   │   ├── note.rs          # 笔记操作
 │   │   ├── project.rs       # 项目级操作（CRUD + 任务关联）
+│   │   ├── resolve.rs       # 短 ID 前缀匹配（CLI/MCP 共享）
 │   │   └── resource.rs      # 资源操作
 │   ├── models/              # 数据模型
 │   │   ├── mod.rs           # 模块入口
@@ -130,14 +131,14 @@ pinchtask/
 | 工具名                     | 功能                                                 |
 | -------------------------- | ---------------------------------------------------- |
 | `new_task`                 | 创建新任务（支持初始清单/笔记/资源/元数据/项目关联） |
-| `update_task`              | 统一更新多个任务字段（含项目关联）                   |
-| `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）        |
-| `add_note`                 | 添加笔记                                             |
-| `add_resource`             | 添加资源引用                                         |
-| `get_checklist_summary`    | 获取清单进度摘要                                     |
-| `clear_task`               | 删除任务                                             |
-| `list_tasks`               | 列出所有任务（支持按项目过滤）                       |
-| `manage_project`           | 统一管理项目（create/get/update/delete/list）        |
+| `update_task`              | 统一更新多个任务字段（含项目关联）。task_id 支持短 ID 前缀匹配 |
+| `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）。task_id 支持短 ID 前缀匹配 |
+| `add_note`                 | 添加笔记。task_id 支持短 ID 前缀匹配                 |
+| `add_resource`             | 添加资源引用。task_id 支持短 ID 前缀匹配             |
+| `get_checklist_summary`    | 获取清单进度摘要。task_id 支持短 ID 前缀匹配         |
+| `clear_task`               | 删除任务。task_id 支持短 ID 前缀匹配                 |
+| `list_tasks`               | 列出所有任务（支持按项目过滤）。project_id 支持短 ID 前缀匹配 |
+| `manage_project`           | 统一管理项目（create/get/update/delete/list）。project_id 支持短 ID 前缀匹配 |
 
 ### CLI 命令（嵌套子命令结构）
 
