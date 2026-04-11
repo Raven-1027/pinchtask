@@ -7,6 +7,7 @@
 pub mod item;
 pub mod note;
 pub mod project;
+pub mod resolve;
 pub mod resource;
 pub mod task;
 
@@ -19,6 +20,9 @@ pub use note::{add_note, delete_note};
 pub use project::{
     create_project, delete_project, delete_project_with_tasks, get_project, get_project_for_task,
     get_tasks_for_project, list_projects, set_task_project, update_project,
+};
+pub use resolve::{
+    resolve_project_id, resolve_project_id_async, resolve_task_id, resolve_task_id_async,
 };
 pub use resource::{add_resource, delete_resource};
 pub use task::{

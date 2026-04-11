@@ -7,6 +7,7 @@ use crate::core;
 use crate::store::TaskStore;
 
 use super::output;
+use super::resolve::resolve_project_id;
 
 // ---------------------------------------------------------------------------
 // 子命令枚举
@@ -243,51 +244,4 @@ async fn run_remove_task(
         json,
     );
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// 辅助函数
-// ---------------------------------------------------------------------------
-
-/// 最少前缀长度。
-const MIN_PREFIX_LEN: usize = 4;
-
-/// 根据前缀匹配项目 ID。
-///
-/// 与 `resolve_task_id` 逻辑一致，支持短前缀匹配。
-fn resolve_project_id(
-    prefix: &str,
-    projects: &[crate::models::project::Project],
-) -> Result<String> {
-    if prefix.len() < MIN_PREFIX_LEN {
-        anyhow::bail!(
-            "ID 前缀至少需要 {MIN_PREFIX_LEN} 位，当前输入: \"{prefix}\"（{} 位）",
-            prefix.len()
-        );
-    }
-
-    let matches: Vec<&crate::models::project::Project> = projects
-        .iter()
-        .filter(|p| p.id.starts_with(prefix))
-        .collect();
-
-    match matches.len() {
-        0 => {
-            anyhow::bail!("未找到匹配的项目: {prefix}")
-        }
-        1 => Ok(matches[0].id.clone()),
-        n => {
-            let candidates: Vec<String> = matches
-                .iter()
-                .map(|p| {
-                    let short_id = &p.id[..8.min(p.id.len())];
-                    format!("  {short_id}  {}", p.name)
-                })
-                .collect();
-            anyhow::bail!(
-                "前缀 \"{prefix}\" 匹配到 {n} 个项目，请多输入几位以消除歧义:\n{}",
-                candidates.join("\n")
-            )
-        }
-    }
 }

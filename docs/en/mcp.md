@@ -86,6 +86,15 @@ Add to your MCP settings:
 
 Any MCP-compatible client that supports stdio transport can connect to pinchtask. Provide the path to the `pinchtask` binary and `["serve"]` as arguments.
 
+## Short ID Prefix Matching
+
+All tools that accept a `task_id` or `project_id` parameter support UUID short-prefix matching. Instead of providing the full UUID, you can type just the first 4 or more characters and the system will automatically resolve it to the unique match.
+
+- Prefixes shorter than 4 characters will result in an error.
+- When there is exactly one match, the prefix is automatically resolved to the full UUID.
+- When there is no match, a "not found" error is returned.
+- When multiple matches exist, the first 10 candidate tasks/projects are listed, prompting you to provide more characters to disambiguate.
+
 ## Tools
 
 The server registers **9 tools**. All tool schemas are fully inlined (no `$ref` references) for maximum client compatibility.
@@ -106,7 +115,7 @@ Create a new task with a description, optional checklist items, notes, resources
 | `notes` | `array<string>` | No | Optional initial notes |
 | `resources` | `array` | No | Optional initial resources |
 | `metadata` | `object` | No | Optional metadata (tags, priority, estimated completion time) |
-| `project_id` | `string` | No | Optional project ID to associate the task with at creation time |
+| `project_id` | `string` | No | Optional project ID to associate the task with at creation time (supports short ID prefix matching) |
 
 **`initial_checklist` item structure:**
 
@@ -183,13 +192,13 @@ Update task-level fields: description, context, priority, tags, estimated comple
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `task_id` | `string` | Yes | The ID of the task to update |
+| `task_id` | `string` | Yes | The ID of the task to update (supports short ID prefix matching) |
 | `task_description` | `string` | No | The new task description |
 | `context_for_all_tasks` | `string` | No | The new context information |
 | `priority` | `string` | No | Priority level: `high` / `medium` / `low` |
 | `tags` | `string` | No | Comma-separated tags (e.g., `"backend,auth,urgent"`) |
 | `eta` | `string` | No | Estimated completion time (ISO timestamp or duration) |
-| `project_id` | `string` or `null` | No | Project ID to associate the task with. Pass a project UUID to assign, pass `null` to remove from project, omit to keep unchanged |
+| `project_id` | `string` or `null` | No | Project ID to associate the task with (supports short ID prefix matching). Pass a project UUID to assign, pass `null` to remove from project, omit to keep unchanged |
 
 **Returns:** The updated task object as JSON.
 
@@ -222,7 +231,7 @@ Perform operations on checklist items. This is the single entry point for all ch
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `action` | `string` | Yes | Operation: `"add"`, `"update"`, `"reorder"`, or `"remove"` |
-| `task_id` | `string` | Yes | The ID of the task |
+| `task_id` | `string` | Yes | The ID of the task (supports short ID prefix matching) |
 | `task` | `string` | For `add` | Short yet comprehensive name for the item |
 | `detailed_description` | `string` | For `add` | Longer description about what to achieve |
 | `index` | `integer` | For `update`, `remove` | 0-based index of the checklist item |
@@ -283,7 +292,7 @@ Add a note to a task. Notes are append-only and useful for recording discoveries
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `task_id` | `string` | Yes | The ID of the task |
+| `task_id` | `string` | Yes | The ID of the task (supports short ID prefix matching) |
 | `content` | `string` | Yes | The content of the note |
 
 **Returns:** The updated task object as JSON.
@@ -298,7 +307,7 @@ Add a resource reference to a task (append-only). Use this to link relevant file
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `task_id` | `string` | Yes | The ID of the task |
+| `task_id` | `string` | Yes | The ID of the task (supports short ID prefix matching) |
 | `name` | `string` | Yes | Name of the resource |
 | `url` | `string` | Yes | URL or file path of the resource |
 | `description` | `string` | No | Description of the resource |
@@ -326,7 +335,7 @@ Get a summary of the task checklist with completion status. Useful for a quick p
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `task_id` | `string` | Yes | The ID of the task |
+| `task_id` | `string` | Yes | The ID of the task (supports short ID prefix matching) |
 | `include_descriptions` | `boolean` | No | Whether to include detailed descriptions alongside item names (default: `false`) |
 
 **Returns:** A text summary of checklist progress.
@@ -341,7 +350,7 @@ Delete a task by its ID. **This is an irreversible operation.** Confirm the `tas
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `task_id` | `string` | Yes | The ID of the task to delete |
+| `task_id` | `string` | Yes | The ID of the task to delete (supports short ID prefix matching) |
 
 **Returns:** A confirmation message.
 
@@ -355,7 +364,7 @@ List all tasks sorted by creation time. Call at the start of a session to get an
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `project_id` | `string` | No | Filter tasks by project ID. Only tasks belonging to the specified project are returned. |
+| `project_id` | `string` | No | Filter tasks by project ID (supports short ID prefix matching). Only tasks belonging to the specified project are returned. |
 
 **Returns:** A concise text summary of all tasks (not full details). Use `new_task` or individual task queries for full information.
 
@@ -378,7 +387,7 @@ Perform operations on projects. Projects are containers for organizing related t
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `action` | `string` | Yes | Operation: `"create"`, `"get"`, `"update"`, `"delete"`, or `"list"` |
-| `project_id` | `string` | For `get`, `update`, `delete` | The ID of the project |
+| `project_id` | `string` | For `get`, `update`, `delete` | The ID of the project (supports short ID prefix matching) |
 | `name` | `string` | For `create`; optional for `update` | The name of the project |
 | `description` | `string` | No | The description of the project (optional for `create`/`update`) |
 | `delete_tasks` | `boolean` | No (for `delete` only) | Whether to also delete all associated tasks (default: `false`) |

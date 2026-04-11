@@ -30,6 +30,30 @@ pub enum StoreError {
     /// 指定项目不存在。
     #[error("项目不存在: {0}")]
     ProjectNotFound(String),
+
+    /// ID 前缀长度不足（需要至少 4 位）。
+    #[error("ID 前缀至少需要 {min_len} 位，当前输入: \"{prefix}\"（{actual_len} 位）")]
+    InvalidIdPrefix {
+        prefix: String,
+        min_len: usize,
+        actual_len: usize,
+    },
+
+    /// ID 前缀匹配到多个任务。
+    #[error("前缀 \"{prefix}\" 匹配到 {count} 个任务，请多输入几位以消除歧义:\n{candidates}")]
+    AmbiguousTaskId {
+        prefix: String,
+        count: usize,
+        candidates: String,
+    },
+
+    /// 项目 ID 前缀匹配到多个结果。
+    #[error("项目前缀 \"{prefix}\" 匹配到 {count} 个项目，请多输入几位以消除歧义:\n{candidates}")]
+    AmbiguousProjectId {
+        prefix: String,
+        count: usize,
+        candidates: String,
+    },
 }
 
 /// 初始化建表 SQL（从 migrations 目录嵌入）。
