@@ -10,6 +10,7 @@ pub mod project;
 pub mod resolve;
 pub mod resource;
 pub mod task;
+pub mod workspace;
 
 // 便捷重导出：允许外部通过 `crate::core::initialize_task(...)` 直接调用。
 pub use item::{
@@ -29,3 +30,4 @@ pub use task::{
     clear_task, get_checklist_summary, initialize_task, list_tasks_summary, update_context,
     update_metadata, update_task_description,
 };
+pub use workspace::{discover_pinproject_path, discover_project_id};

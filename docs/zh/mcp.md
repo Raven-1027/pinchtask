@@ -98,6 +98,19 @@ pinchtask serve -D /path/to/data
 - 无匹配时报错"未找到"。
 - 多个匹配时返回前 10 个候选任务/项目列表，提示输入更多字符以消除歧义。
 
+## 工作区项目关联（.pinchproject）
+
+在 MCP 服务器启动目录（或其上级目录）放置 `.pinchproject` 文件，内容为项目 UUID。服务器启动时会自动解析该文件。
+
+当以下工具未显式指定 `project_id` 参数时，自动使用 `.pinchproject` 中的项目 ID：
+
+- `new_task` — 自动关联到 `.pinchproject` 指定的项目
+- `list_tasks` — 自动按该项目过滤任务
+
+**优先级**：显式 `project_id` > `.pinchproject` > 无项目
+
+注意：MCP 服务器的 CWD 取决于 AI 客户端的启动配置。如果客户端从项目目录启动 pinchtask serve，则 `.pinchproject` 生效。
+
 ## 工具列表
 
 ### new_task

@@ -62,7 +62,7 @@ fn install_panic_hook() {
 /// 3. 启动事件总线
 /// 4. 运行主循环（渲染 → 事件 → 状态更新 → 重复）
 /// 5. 恢复终端状态
-pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
+pub async fn run(data_dir: Option<PathBuf>, project_id: Option<String>) -> Result<()> {
     // 在终端初始化之前安装 panic hook
     install_panic_hook();
 
@@ -74,7 +74,7 @@ pub async fn run(data_dir: Option<PathBuf>) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // ── 创建应用状态与事件总线 ─────────────────────────────────────────
-    let mut app = App::new(data_dir);
+    let mut app = App::new(data_dir, project_id);
     let mut event_bus = EventBus::new();
     app.set_action_tx(event_bus.sender());
 

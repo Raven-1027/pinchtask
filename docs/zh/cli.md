@@ -16,6 +16,24 @@ pinchtask 提供完整的命令行界面，支持任务的创建、查询、编�
 | `-q, --quiet` | 安静模式（等价于 `--log-level error`），与 `--verbose` 互斥 |
 | `--json` | 以 JSON 格式输出（适用于查询类命令） |
 
+## 工作区项目关联（.pinchproject）
+
+在项目根目录放置 `.pinchproject` 文件，内容为项目 UUID（支持 `#` 注释）：
+
+```
+# .pinchproject
+550e8400-e29b-41d4-a716-446655440000
+```
+
+当从该目录或子目录执行 CLI 命令时，自动使用文件中的项目 ID：
+
+- `task new` — 未指定 `--project` 时自动关联到 `.pinchproject` 指定的项目
+- `task ls` — 未指定 `--project` 时自动按该项目过滤任务
+
+**优先级**：显式 `--project` > `.pinchproject` > 无项目
+
+系统从当前目录向上逐级搜索 `.pinchproject` 文件，使用最近（最靠近当前目录）的那个。
+
 ## 短 ID 匹配
 
 所有需要任务 ID 或项目 ID 的命令都支持短前缀匹配：输入 UUID 的前 4 位及以上即可定位目标。当前缀匹配到多个结果时，会提示歧义并列出候选项。
@@ -80,6 +98,7 @@ pinchtask task ls [OPTIONS]
 | `-l, --long` | 详细模式（显示更多列） |
 | `-n, --limit <数量>` | 限制显示数量（默认: 10） |
 | `--sort <字段>` | 排序字段：`time`（默认）、`priority`、`progress` |
+| `-p, --project <项目ID>` | 按项目筛选，只显示该项目下的任务（支持短前缀） |
 
 默认只显示未完成任务（无清单条目，或存在未完成条目的任务）。
 
@@ -100,6 +119,12 @@ pinchtask task ls --sort progress
 
 # 只显示已完成任务
 pinchtask task ls --done
+
+# 按项目筛选
+pinchtask task ls -p b1c2d3e4
+
+# 按项目筛选并显示全部
+pinchtask task ls --all -p b1c2d3e4
 ```
 
 ### `task show` — 查看任务详情

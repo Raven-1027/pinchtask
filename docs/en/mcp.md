@@ -93,7 +93,20 @@ All tools that accept a `task_id` or `project_id` parameter support UUID short-p
 - Prefixes shorter than 4 characters will result in an error.
 - When there is exactly one match, the prefix is automatically resolved to the full UUID.
 - When there is no match, a "not found" error is returned.
-- When multiple matches exist, the first 10 candidate tasks/projects are listed, prompting you to provide more characters to disambiguate.
+When multiple matches exist, the first 10 candidate tasks/projects are listed, prompting you to provide more characters to disambiguate.
+
+## Workspace Project Association (.pinchproject)
+
+Place a `.pinchproject` file in the MCP server's startup directory (or any parent directory) containing the project UUID. The server automatically resolves this file on startup.
+
+When the following tools are called without an explicit `project_id` parameter, the project ID from `.pinchproject` is automatically used:
+
+- `new_task` — Automatically associates the task with the project from `.pinchproject`
+- `list_tasks` — Automatically filters tasks by that project
+
+**Priority**: Explicit `project_id` > `.pinchproject` > No project
+
+Note: The MCP server's CWD depends on the AI client's launch configuration. If the client starts `pinchtask serve` from a project directory, `.pinchproject` takes effect.
 
 ## Tools
 

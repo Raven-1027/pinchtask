@@ -8,7 +8,7 @@ use crate::models::task::TaskMetadata;
 use crate::store::TaskStore;
 
 use super::output;
-use super::resolve::resolve_task_id;
+use super::resolve::{resolve_project_id, resolve_task_id};
 
 // ---------------------------------------------------------------------------
 // 子命令枚举
@@ -64,6 +64,9 @@ pub struct LsArgs {
     /// 排序字段: time / priority / progress
     #[arg(long, default_value = "time")]
     pub sort: String,
+    /// 按项目筛选（支持短 ID 前缀）
+    #[arg(short = 'p', long)]
+    pub project: Option<String>,
 }
 
 /// 查看任务详情
@@ -107,18 +110,39 @@ pub struct TaskRmArgs {
 // ---------------------------------------------------------------------------
 
 /// 分发任务子命令。
-pub async fn run_task(command: &TaskCommands, store: &TaskStore, json: bool) -> Result<()> {
+pub async fn run_task(
+    command: &TaskCommands,
+    store: &TaskStore,
+    json: bool,
+    workspace_project_id: Option<&str>,
+) -> Result<()> {
     match command {
-        TaskCommands::New(args) => run_new(args, store, json).await,
-        TaskCommands::Ls(args) => run_ls(args, store, json).await,
-        TaskCommands::Show(args) => run_show(args, store, json).await,
-        TaskCommands::Edit(args) => run_edit(args, store, json).await,
-        TaskCommands::Rm(args) => run_rm(args, store, json).await,
+        TaskCommands::New(args) => run_new(args, store, json, workspace_project_id).await,
+        TaskCommands::Ls(args) => run_ls(args, store, json, workspace_project_id).await,
+        TaskCommands::Show(args) => run_show(args, store, json, workspace_project_id).await,
+        TaskCommands::Edit(args) => run_edit(args, store, json, workspace_project_id).await,
+        TaskCommands::Rm(args) => run_rm(args, store, json, workspace_project_id).await,
     }
 }
 
 /// 创建新任务。
-async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_new(
+    args: &NewArgs,
+    store: &TaskStore,
+    json: bool,
+    workspace_project_id: Option<&str>,
+) -> Result<()> {
+    // 优先级：显式 --project > .pinchproject > None
+    let project_id = args.project.as_deref().or(workspace_project_id);
+    if let Some(pid) = workspace_project_id
+        && args.project.is_none()
+    {
+        tracing::info!(
+            project_id = pid,
+            "auto-associating task with workspace project"
+        );
+    }
+
     let task = core::initialize_task(
         store,
         &args.description,
@@ -127,7 +151,7 @@ async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
         vec![],
         vec![],
         None,
-        args.project.as_deref(),
+        project_id,
     )
     .await?;
     output::print(output::Output::Task(&task), json);
@@ -135,8 +159,30 @@ async fn run_new(args: &NewArgs, store: &TaskStore, json: bool) -> Result<()> {
 }
 
 /// 列出任务。
-async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
-    let tasks = store.list_tasks().await?;
+async fn run_ls(
+    args: &LsArgs,
+    store: &TaskStore,
+    json: bool,
+    workspace_project_id: Option<&str>,
+) -> Result<()> {
+    // 优先级：显式 --project > .pinchproject > None
+    let effective_project = args.project.as_deref().or(workspace_project_id);
+    if let Some(pid) = workspace_project_id
+        && args.project.is_none()
+    {
+        tracing::info!(
+            project_id = pid,
+            "auto-filtering tasks by workspace project"
+        );
+    }
+
+    let tasks = if let Some(project_prefix) = effective_project {
+        let projects = core::list_projects(store).await?;
+        let full_project_id = resolve_project_id(project_prefix, &projects)?;
+        store.get_tasks_for_project(&full_project_id).await?
+    } else {
+        store.list_tasks().await?
+    };
 
     // 过滤
     let filtered: Vec<_> = if args.done {
@@ -200,7 +246,12 @@ async fn run_ls(args: &LsArgs, store: &TaskStore, json: bool) -> Result<()> {
 }
 
 /// 查看任务详情。
-async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_show(
+    args: &ShowArgs,
+    store: &TaskStore,
+    json: bool,
+    _workspace_project_id: Option<&str>,
+) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
     let task = store.get_task(&full_id).await?;
@@ -209,7 +260,12 @@ async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<()> 
 }
 
 /// 编辑任务描述、上下文或元数据。
-async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_edit(
+    args: &TaskEditArgs,
+    store: &TaskStore,
+    json: bool,
+    _workspace_project_id: Option<&str>,
+) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
 
@@ -264,7 +320,12 @@ async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<
 }
 
 /// 删除任务。
-async fn run_rm(args: &TaskRmArgs, store: &TaskStore, json: bool) -> Result<()> {
+async fn run_rm(
+    args: &TaskRmArgs,
+    store: &TaskStore,
+    json: bool,
+    _workspace_project_id: Option<&str>,
+) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
     core::clear_task(store, &full_id).await?;
