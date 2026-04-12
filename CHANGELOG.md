@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.1] - 2026-04-12
+
+### Added
+
+- `project init` CLI 命令：在当前目录创建 `.pinchproject` 文件，将目录关联到指定项目（支持短前缀匹配）
+- `project init --force` 选项：覆盖已存在的 `.pinchproject` 文件
+- `core::workspace::write_pinproject_file()` 函数：写入带注释头的 `.pinchproject` 文件
+
 ## [0.3.0] - 2026-04-11
 
 ### Added

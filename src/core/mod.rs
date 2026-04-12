@@ -30,4 +30,4 @@ pub use task::{
     clear_task, get_checklist_summary, initialize_task, list_tasks_summary, update_context,
     update_metadata, update_task_description,
 };
-pub use workspace::{discover_pinproject_path, discover_project_id};
+pub use workspace::{discover_pinproject_path, discover_project_id, write_pinproject_file};

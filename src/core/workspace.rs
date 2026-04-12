@@ -57,6 +57,29 @@ pub fn discover_pinproject_path() -> Option<PathBuf> {
     None
 }
 
+/// 在指定路径创建或覆盖 `.pinchproject` 文件，写入项目 ID。
+///
+/// 如果文件已存在，会被覆盖。
+/// 返回写入的文件完整路径。
+///
+/// # 错误
+///
+/// - `project_id` 不是有效的 UUID 格式
+/// - 文件写入失败（权限、磁盘空间等）
+pub fn write_pinproject_file(path: &Path, project_id: &str) -> Result<PathBuf, String> {
+    if !is_valid_uuid(project_id) {
+        return Err(format!(
+            "无效的项目 ID 格式: {project_id}（期望 UUID 格式）"
+        ));
+    }
+
+    let content = format!("# pinchtask workspace project\n{project_id}\n");
+
+    std::fs::write(path, &content).map_err(|e| format!("无法写入 {}: {e}", path.display()))?;
+
+    Ok(path.to_path_buf())
+}
+
 /// 解析 `.pinchproject` 文件内容，提取第一个有效 UUID。
 ///
 /// 规则：

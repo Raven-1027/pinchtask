@@ -5,7 +5,7 @@
 **pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 **CLI 本地操作**、**MCP 服务器** 和 **交互式 TUI** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
 - **语言**: Rust (Edition 2024)
-- **版本**: 0.3.0
+- **版本**: 0.3.1
 - **许可证**: MIT
 - **代码量**: ~12000 行 Rust 代码
 - **构建状态**: 编译通过，114 个测试全部通过（96 单元测试 + 18 集成测试）
@@ -75,7 +75,7 @@ pinchtask/
 │       ├── item.rs          # item add / check / mv / summary / edit / rm
 │       ├── note.rs          # note add / rm
 │       ├── link.rs          # link add / rm
-│       ├── project.rs       # project new / ls / show / edit / rm / add-task / rm-task
+│       ├── project.rs       # project new / ls / show / edit / rm / add-task / rm-task / init
 │       ├── output.rs        # 统一输出格式化
 │       ├── resolve.rs       # 短 ID 前缀匹配
 │       ├── logging.rs       # 日志初始化
@@ -161,7 +161,7 @@ pinchtask/
 | `item`       | `add`, `check`, `mv`, `summary`, `edit`, `rm`            |
 | `note`       | `add`, `rm`                                              |
 | `link`       | `add`, `rm`                                              |
-| `project`    | `new`, `ls`, `show`, `edit`, `rm`, `add-task`, `rm-task` |
+| `project`    | `new`, `ls`, `show`, `edit`, `rm`, `add-task`, `rm-task`, `init` |
 | `serve`      | 启动 MCP 服务器                                          |
 | `tui`        | 启动交互式 TUI（需 `tui` feature）                       |
 | `completion` | 生成 shell 补全脚本                                      |
