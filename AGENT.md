@@ -137,7 +137,7 @@ pinchtask/
 | `add_resource`             | 添加资源引用。task_id 支持短 ID 前缀匹配             |
 | `get_checklist_summary`    | 获取清单进度摘要。task_id 支持短 ID 前缀匹配         |
 | `clear_task`               | 删除任务。task_id 支持短 ID 前缀匹配                 |
-| `list_tasks`               | 按状态分组列出任务（进行中→未开始→已完成，组内按优先级排序）。project_id 必填，支持短 ID 前缀匹配，`"*"` 表示跨所有项目查询 |
+| `list_tasks`               | 按状态分组列出任务（进行中→未开始→已完成，组内按优先级排序）。project_id 必填，支持短 ID 前缀匹配，`"*"` 表示跨所有项目查询。支持 `status_filter` 按状态筛选，`include_all` 跳过截断逻辑 |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）。project_id 支持短 ID 前缀匹配 |
 
 ### 工作区自动关联

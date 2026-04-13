@@ -27,8 +27,8 @@ pub use resolve::{
 };
 pub use resource::{add_resource, delete_resource};
 pub use task::{
-    TaskStatus, clear_task, derive_task_status, format_task_list_smart, get_checklist_summary,
-    initialize_task, list_tasks_summary, priority_rank, update_context, update_metadata,
-    update_task_description,
+    ListTasksOptions, TaskStatus, clear_task, derive_task_status, format_task_list_smart,
+    get_checklist_summary, initialize_task, list_tasks_summary, parse_status_filter, priority_rank,
+    update_context, update_metadata, update_task_description,
 };
 pub use workspace::{discover_pinproject_path, discover_project_id, write_pinproject_file};

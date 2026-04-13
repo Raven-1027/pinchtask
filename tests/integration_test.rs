@@ -290,6 +290,7 @@ async fn test_list_tasks_after_creating_two() {
     let result = server
         .list_tasks(Parameters(ListTasksParams {
             project_id: pid.clone(),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -868,4 +869,78 @@ async fn test_update_checklist_item_partial() {
         task["checklist"][0]["context_and_plan"].is_null(),
         "context_and_plan 应被清空为 null"
     );
+}
+
+#[tokio::test]
+async fn test_list_tasks_with_status_filter() {
+    let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
+
+    // 创建不同状态的任务
+    let _ = server
+        .new_task(Parameters(InitializeTaskParams {
+            task_description: "进行中任务".to_owned(),
+            context_for_all_tasks: None,
+            initial_checklist: Some(vec![
+                InitialChecklistItem {
+                    task: "项1".to_owned(),
+                    detailed_description: "".to_owned(),
+                    context_and_plan: None,
+                    done: true,
+                    id: None,
+                },
+                InitialChecklistItem {
+                    task: "项2".to_owned(),
+                    detailed_description: "".to_owned(),
+                    context_and_plan: None,
+                    done: false,
+                    id: None,
+                },
+            ]),
+            notes: None,
+            resources: None,
+            metadata: None,
+            project_id: pid.clone(),
+        }))
+        .await;
+
+    let _ = server
+        .new_task(Parameters(InitializeTaskParams {
+            task_description: "未开始任务".to_owned(),
+            context_for_all_tasks: None,
+            initial_checklist: None,
+            notes: None,
+            resources: None,
+            metadata: None,
+            project_id: pid.clone(),
+        }))
+        .await;
+
+    // 用 status_filter 筛选进行中任务
+    let result = server
+        .list_tasks(Parameters(ListTasksParams {
+            project_id: pid.clone(),
+            status_filter: Some("in_progress".to_owned()),
+            include_all: None,
+        }))
+        .await
+        .unwrap();
+
+    let text = extract_text(&result).unwrap();
+    assert!(text.contains("进行中任务"), "应包含进行中任务");
+    assert!(!text.contains("未开始任务"), "不应包含未开始任务");
+
+    // 用无效的 status_filter（等同于不过滤）
+    let result = server
+        .list_tasks(Parameters(ListTasksParams {
+            project_id: pid.clone(),
+            status_filter: Some("invalid_status".to_owned()),
+            include_all: None,
+        }))
+        .await
+        .unwrap();
+
+    let text = extract_text(&result).unwrap();
+    assert!(text.contains("进行中任务"), "无效过滤应显示全部任务");
+    assert!(text.contains("未开始任务"), "无效过滤应显示全部任务");
 }

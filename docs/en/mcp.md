@@ -399,6 +399,8 @@ List tasks grouped by status. Tasks are organized into three groups — In Progr
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `project_id` | `string` | Yes | Project ID (supports short ID prefix matching). Pass `"*"` to query across all projects. |
+| `status_filter` | `string` | No | Filter by task status: `"in_progress"`, `"not_started"`, or `"completed"`. When omitted, all statuses are shown. |
+| `include_all` | `boolean` | No | When `true`, bypass the truncation logic (which normally hides all but the first 3 items in Not Started and Completed groups when total tasks > 10) and show all tasks. |
 
 **Returns:** A concise text summary grouped by status (not full details). Use `new_task` or individual task queries for full information.
 

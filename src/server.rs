@@ -462,17 +462,23 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "list_tasks",
-        description = "List tasks with smart formatting. Tasks are grouped by status (in progress → not started → completed), sorted by priority within each group, and truncated when there are many tasks. Pass \"*\" as project_id to list tasks across all projects, or provide a specific project ID to filter. Project IDs support short ID prefix matching (minimum 4 characters of the UUID)."
+        description = "List tasks with smart formatting. Tasks are grouped by status (in progress → not started → completed), sorted by priority within each group, and truncated when there are many tasks. Pass \"*\" as project_id to list tasks across all projects, or provide a specific project ID to filter. Project IDs support short ID prefix matching (minimum 4 characters of the UUID). Use status_filter to show only tasks of a specific status (\"in_progress\", \"not_started\", or \"completed\"). Use include_all=true to show all tasks without truncation."
     )]
     pub async fn list_tasks(
         &self,
         Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        let options = core::ListTasksOptions {
+            status_filter: params
+                .status_filter
+                .as_deref()
+                .and_then(core::parse_status_filter),
+            include_all: params.include_all.unwrap_or(false),
+        };
         if params.project_id == "*" {
-            self.store
-                .list_tasks()
-                .await
-                .into_tool_result(|tasks| text_result(core::format_task_list_smart(&tasks), false))
+            self.store.list_tasks().await.into_tool_result(|tasks| {
+                text_result(core::format_task_list_smart(&tasks, &options), false)
+            })
         } else {
             let full_project_id =
                 match core::resolve_project_id_async(&self.store, &params.project_id, 10).await {
@@ -482,7 +488,9 @@ impl PinchTaskServer {
             self.store
                 .get_tasks_for_project(&full_project_id)
                 .await
-                .into_tool_result(|tasks| text_result(core::format_task_list_smart(&tasks), false))
+                .into_tool_result(|tasks| {
+                    text_result(core::format_task_list_smart(&tasks, &options), false)
+                })
         }
     }
 

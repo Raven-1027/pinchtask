@@ -142,8 +142,17 @@ pub fn priority_rank(task: &Task) -> u8 {
     }
 }
 
+/// format_task_list_smart 的选项。
+#[derive(Debug, Clone, Default)]
+pub struct ListTasksOptions {
+    /// 按状态过滤，None 表示显示全部。
+    pub status_filter: Option<TaskStatus>,
+    /// 是否跳过截断，显示全部任务。
+    pub include_all: bool,
+}
+
 /// 智能格式化任务列表：按状态分组、按优先级排序、超量截断。
-pub fn format_task_list_smart(tasks: &[Task]) -> String {
+pub fn format_task_list_smart(tasks: &[Task], options: &ListTasksOptions) -> String {
     if tasks.is_empty() {
         return "当前没有任何任务".to_owned();
     }
@@ -153,7 +162,14 @@ pub fn format_task_list_smart(tasks: &[Task]) -> String {
     let mut completed: Vec<&Task> = Vec::new();
 
     for task in tasks {
-        match derive_task_status(task) {
+        let status = derive_task_status(task);
+        // 如果设置了状态过滤，只保留匹配的任务
+        if let Some(ref filter) = options.status_filter
+            && status != *filter
+        {
+            continue;
+        }
+        match status {
             TaskStatus::InProgress => in_progress.push(task),
             TaskStatus::NotStarted => not_started.push(task),
             TaskStatus::Completed => completed.push(task),
@@ -166,8 +182,8 @@ pub fn format_task_list_smart(tasks: &[Task]) -> String {
     not_started.sort_by_key(sort_key);
     completed.sort_by_key(sort_key);
 
-    let total = tasks.len();
-    let need_truncate = total > 10;
+    let total = in_progress.len() + not_started.len() + completed.len();
+    let need_truncate = !options.include_all && total > 10;
 
     let mut output = String::new();
 
@@ -253,6 +269,16 @@ fn priority_icon(task: &Task) -> &'static str {
         Some("high") => "🔴",
         Some("medium") => "🟡",
         _ => "⚪",
+    }
+}
+
+/// 解析状态筛选字符串。
+pub fn parse_status_filter(s: &str) -> Option<TaskStatus> {
+    match s {
+        "in_progress" => Some(TaskStatus::InProgress),
+        "not_started" => Some(TaskStatus::NotStarted),
+        "completed" => Some(TaskStatus::Completed),
+        _ => None,
     }
 }
 
@@ -662,7 +688,7 @@ mod tests {
 
     #[test]
     fn format_task_list_smart_empty() {
-        let output = format_task_list_smart(&[]);
+        let output = format_task_list_smart(&[], &super::ListTasksOptions::default());
         assert_eq!(output, "当前没有任何任务");
     }
 
@@ -680,7 +706,7 @@ mod tests {
             make_task("未开始任务", vec![], None),
             make_task("已完成任务", vec![make_checklist_item("项1", true)], None),
         ];
-        let output = format_task_list_smart(&tasks);
+        let output = format_task_list_smart(&tasks, &super::ListTasksOptions::default());
         assert!(output.contains("## 进行中 (1)"), "应包含进行中分组标题");
         assert!(output.contains("## 未开始 (1)"), "应包含未开始分组标题");
         assert!(output.contains("## 已完成 (1)"), "应包含已完成分组标题");
@@ -712,7 +738,7 @@ mod tests {
                 None,
             ));
         }
-        let output = format_task_list_smart(&tasks);
+        let output = format_task_list_smart(&tasks, &super::ListTasksOptions::default());
         assert!(
             output.contains("还有 2 个未开始的任务未展示"),
             "未开始组应截断并提示剩余数量"
@@ -755,9 +781,121 @@ mod tests {
             created_at: "2025-01-02T00:00:00Z".to_owned(),
             updated_at: "2025-01-02T00:00:00Z".to_owned(),
         };
-        let output = format_task_list_smart(&[low_task, high_task]);
+        let output =
+            format_task_list_smart(&[low_task, high_task], &super::ListTasksOptions::default());
         let low_pos = output.find("低优先级任务").expect("应包含低优先级任务");
         let high_pos = output.find("高优先级任务").expect("应包含高优先级任务");
         assert!(high_pos < low_pos, "高优先级任务应排在低优先级任务之前");
+    }
+
+    // ------------------------------------------------------------------
+    // parse_status_filter
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parse_status_filter_valid() {
+        assert!(matches!(
+            super::parse_status_filter("in_progress"),
+            Some(super::TaskStatus::InProgress)
+        ));
+        assert!(matches!(
+            super::parse_status_filter("not_started"),
+            Some(super::TaskStatus::NotStarted)
+        ));
+        assert!(matches!(
+            super::parse_status_filter("completed"),
+            Some(super::TaskStatus::Completed)
+        ));
+    }
+
+    #[test]
+    fn parse_status_filter_invalid() {
+        assert!(super::parse_status_filter("invalid").is_none());
+        assert!(super::parse_status_filter("").is_none());
+        assert!(super::parse_status_filter("InProgress").is_none()); // 大小写敏感
+    }
+
+    // ------------------------------------------------------------------
+    // format_task_list_smart with options
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn format_task_list_smart_status_filter_in_progress() {
+        let tasks = vec![
+            make_task(
+                "进行中",
+                vec![
+                    make_checklist_item("项", true),
+                    make_checklist_item("项", false),
+                ],
+                None,
+            ),
+            make_task("未开始", vec![], None),
+            make_task("已完成", vec![make_checklist_item("项", true)], None),
+        ];
+        let options = super::ListTasksOptions {
+            status_filter: Some(super::TaskStatus::InProgress),
+            include_all: false,
+        };
+        let output = format_task_list_smart(&tasks, &options);
+        assert!(output.contains("## 进行中 (1)"), "应包含进行中分组");
+        assert!(!output.contains("## 未开始"), "不应包含未开始分组");
+        assert!(!output.contains("## 已完成"), "不应包含已完成分组");
+        assert!(output.contains("进行中"));
+    }
+
+    #[test]
+    fn format_task_list_smart_include_all_no_truncate() {
+        // 超过 10 个任务但 include_all=true 时不截断
+        let mut tasks = Vec::new();
+        for i in 0..5 {
+            tasks.push(make_task(
+                &format!("进行中{}", i),
+                vec![
+                    make_checklist_item("项", true),
+                    make_checklist_item("项", false),
+                ],
+                None,
+            ));
+        }
+        for i in 0..5 {
+            tasks.push(make_task(&format!("未开始{}", i), vec![], None));
+        }
+        for i in 0..3 {
+            tasks.push(make_task(
+                &format!("已完成{}", i),
+                vec![make_checklist_item("项", true)],
+                None,
+            ));
+        }
+        let options = super::ListTasksOptions {
+            status_filter: None,
+            include_all: true,
+        };
+        let output = format_task_list_smart(&tasks, &options);
+        assert!(!output.contains("还有"), "include_all=true 时不应截断");
+        assert!(
+            output.contains("## 未开始 (5)"),
+            "应展示全部 5 个未开始任务"
+        );
+    }
+
+    #[test]
+    fn format_task_list_smart_invalid_status_filter() {
+        // 无效的 status_filter 值应被忽略（parse_status_filter 返回 None → 等同于不过滤）
+        let tasks = vec![make_task(
+            "进行中",
+            vec![
+                make_checklist_item("项", true),
+                make_checklist_item("项", false),
+            ],
+            None,
+        )];
+        let options = super::ListTasksOptions {
+            status_filter: None, // parse_status_filter("invalid") 返回 None
+            include_all: false,
+        };
+        let output = format_task_list_smart(&tasks, &options);
+        assert!(output.contains("进行中"), "无效过滤应等同不过滤");
     }
 }

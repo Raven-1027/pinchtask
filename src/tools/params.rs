@@ -278,13 +278,25 @@ pub struct ClearTaskParams {
     pub task_id: String,
 }
 
-/// `list_tasks` 参数（无额外参数）。
+/// `list_tasks` 参数。
 #[derive(Debug, Deserialize, JsonSchema, Default)]
 pub struct ListTasksParams {
     #[schemars(
         description = "Required. The ID of the project to filter tasks by. Pass \"*\" to list tasks across all projects. Supports short ID prefix matching (minimum 4 characters of the UUID). When working within a project directory with a .pinchproject file, prefer using that project ID."
     )]
     pub project_id: String,
+
+    #[serde(default)]
+    #[schemars(
+        description = "Optional status filter. Valid values: \"in_progress\", \"not_started\", \"completed\". When provided, only tasks matching this status are shown. If not provided, all statuses are shown."
+    )]
+    pub status_filter: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        description = "If true, show all tasks without truncation (overrides the default threshold of 10 total tasks). Useful when you need a complete view of all tasks."
+    )]
+    pub include_all: Option<bool>,
 }
 
 /// Action type for project operations.
