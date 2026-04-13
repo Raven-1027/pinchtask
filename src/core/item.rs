@@ -2,6 +2,7 @@
 
 use uuid::Uuid;
 
+#[cfg(test)]
 use crate::models::task::ChecklistItem;
 use crate::store::{StoreError, TaskStore};
 
@@ -13,15 +14,18 @@ pub async fn add_checklist_item(
     detailed_description: &str,
     context_and_plan: Option<&str>,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    task.checklist.push(ChecklistItem {
-        id: Uuid::new_v4().to_string(),
-        task: task_name.to_owned(),
-        detailed_description: detailed_description.to_owned(),
-        context_and_plan: context_and_plan.map(|s| s.to_owned()),
-        done: false,
-    });
-    store.update_task(&mut task).await?;
+    let item_id = Uuid::new_v4().to_string();
+    store
+        .insert_checklist_item_atomic(
+            task_id,
+            &item_id,
+            task_name,
+            detailed_description,
+            context_and_plan,
+            false,
+        )
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 
@@ -38,26 +42,20 @@ pub async fn update_checklist_item(
     context_and_plan: Option<Option<&str>>,
     done: Option<bool>,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    if item_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "清单条目索引越界: {item_index}"
-        )));
-    }
-    let item = &mut task.checklist[item_index];
-    if let Some(name) = task_name {
-        item.task = name.to_owned();
-    }
-    if let Some(desc) = detailed_description {
-        item.detailed_description = desc.to_owned();
-    }
-    if let Some(cap) = context_and_plan {
-        item.context_and_plan = cap.map(|s| s.to_owned());
-    }
-    if let Some(d) = done {
-        item.done = d;
-    }
-    store.update_task(&mut task).await?;
+    let item_id = store
+        .get_checklist_item_id_by_index(task_id, item_index)
+        .await?;
+    store
+        .update_checklist_item_atomic(
+            task_id,
+            &item_id,
+            task_name,
+            detailed_description,
+            context_and_plan,
+            done,
+        )
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 
@@ -67,14 +65,13 @@ pub async fn mark_task_done(
     task_id: &str,
     item_index: usize,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    if item_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "清单条目索引越界: {item_index}"
-        )));
-    }
-    task.checklist[item_index].done = true;
-    store.update_task(&mut task).await?;
+    let item_id = store
+        .get_checklist_item_id_by_index(task_id, item_index)
+        .await?;
+    store
+        .update_checklist_item_atomic(task_id, &item_id, None, None, None, Some(true))
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 
@@ -84,14 +81,13 @@ pub async fn mark_task_undone(
     task_id: &str,
     item_index: usize,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    if item_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "清单条目索引越界: {item_index}"
-        )));
-    }
-    task.checklist[item_index].done = false;
-    store.update_task(&mut task).await?;
+    let item_id = store
+        .get_checklist_item_id_by_index(task_id, item_index)
+        .await?;
+    store
+        .update_checklist_item_atomic(task_id, &item_id, None, None, None, Some(false))
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 
@@ -101,39 +97,27 @@ pub async fn remove_checklist_item(
     task_id: &str,
     item_index: usize,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    if item_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!(
-            "清单条目索引越界: {item_index}"
-        )));
-    }
-    task.checklist.remove(item_index);
-    store.update_task(&mut task).await?;
+    let item_id = store
+        .get_checklist_item_id_by_index(task_id, item_index)
+        .await?;
+    store
+        .remove_checklist_item_atomic(task_id, &item_id)
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 
 /// 将清单条目从 from_index 移动到 to_index。
-///
-/// 先移除原位置的条目，再插入到目标位置。
 pub async fn reorder_checklist_item(
     store: &TaskStore,
     task_id: &str,
     from_index: usize,
     to_index: usize,
 ) -> Result<crate::models::task::Task, StoreError> {
-    let mut task = store.get_task(task_id).await?;
-    if from_index >= task.checklist.len() {
-        return Err(StoreError::NotFound(format!("源索引越界: {from_index}")));
-    }
-    // to_index 允许等于 checklist.len()（追加到末尾），但不能更大
-    if to_index > task.checklist.len() {
-        return Err(StoreError::NotFound(format!("目标索引越界: {to_index}")));
-    }
-    let item = task.checklist.remove(from_index);
-    // 标准做法：先 remove，然后 min(to_index, len) 作为插入点
-    let insert_at = to_index.min(task.checklist.len());
-    task.checklist.insert(insert_at, item);
-    store.update_task(&mut task).await?;
+    store
+        .reorder_checklist_item_atomic(task_id, from_index, to_index)
+        .await?;
+    let task = store.get_task(task_id).await?;
     Ok(task)
 }
 

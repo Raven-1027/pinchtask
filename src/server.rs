@@ -28,20 +28,14 @@ use crate::tools::params::*;
 pub struct PinchTaskServer {
     store: Arc<TaskStore>,
     tool_router: ToolRouter<Self>,
-    workspace_project_id: Option<String>,
 }
 
 impl PinchTaskServer {
     /// 创建新的 MCP 服务器实例。
     pub fn new(store: TaskStore) -> Self {
-        let workspace_project_id = crate::core::discover_project_id();
-        if let Some(ref pid) = workspace_project_id {
-            tracing::info!("MCP 服务器: 检测到 .pinchproject，自动关联项目 {}", pid);
-        }
         Self {
             store: Arc::new(store),
             tool_router: Self::tool_router(),
-            workspace_project_id,
         }
     }
 }
@@ -112,7 +106,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "new_task",
-        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints). Tag is sequence of strings. Optionally provide project_id to associate the task with a project at creation time.",
+        description = "Create a new task with a description, optional checklist items, notes, resources, and metadata. Usage: For multi-step tasks, provide initial_checklist to plan sub-tasks upfront. Use context_for_all_tasks to share background information across all sub-tasks (e.g., tech stack, constraints). Tag is sequence of strings. project_id is required to associate the task with a project. Use manage_project (action: \"list\") to find available project IDs.",
         input_schema = crate::tools::params::json_schema_for::<InitializeTaskParams>()
     )]
     pub async fn new_task(
@@ -149,12 +143,6 @@ impl PinchTaskServer {
             estimated_completion_time: m.estimated_completion_time,
         });
 
-        // 显式 project_id 优先，否则使用 workspace 自动关联
-        let effective_project_id = params
-            .project_id
-            .as_deref()
-            .or(self.workspace_project_id.as_deref());
-
         core::initialize_task(
             &self.store,
             &params.task_description,
@@ -163,7 +151,7 @@ impl PinchTaskServer {
             params.notes.unwrap_or_default(),
             resources,
             metadata,
-            effective_project_id,
+            Some(params.project_id.as_str()),
         )
         .await
         .into_tool_result(|t| task_to_result(&t))
@@ -266,7 +254,7 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "manage_checklist_item",
-        description = "Perform operations on checklist items. NOTE: All checklist item indices are 0-based (the first item has index 0).\n\nSelect the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\nThis is the single entry point for all checklist item operations. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
+        description = "Perform operations on checklist items. NOTE: All checklist item indices are 0-based (the first item has index 0).\n\nSelect the action based on what you need:\n\n- \"add\": Append a new item. Provide task (short name) and detailed_description. context_and_plan is optional.\n\n- \"update\": Modify an existing item's fields. Provide index (0-based). Only specified fields are changed. Set done=true to mark completed, done=false to revert. Pass context_and_plan=null to clear it, or omit to keep unchanged.\n\n- \"reorder\": Move an item to a new position. Provide from_index and to_index (both 0-based). After reordering, indices change — refresh task data before further index operations.\n\n- \"remove\": Delete an item. Provide index (0-based). After removal, subsequent indices shift down by 1.\n\n- \"batch_update\": Update multiple items in a single request. Provide updates array, each element specifies index and fields to change. Items are updated sequentially. Useful for bulk marking completion.\n\nThis is the single entry point for all checklist item operations. The task_id parameter supports short ID prefix matching (minimum 4 characters of the UUID).",
         input_schema = crate::tools::params::json_schema_for::<ManageChecklistItemParams>()
     )]
     pub async fn manage_checklist_item(
@@ -335,6 +323,42 @@ impl PinchTaskServer {
                 core::remove_checklist_item(&self.store, &full_id, index)
                     .await
                     .into_tool_result(|t| task_to_result(&t))
+            }
+            Action::BatchUpdate => {
+                let updates = params.updates.ok_or_else(|| {
+                    ErrorData::invalid_params("updates is required for batch_update action", None)
+                })?;
+                if updates.is_empty() {
+                    return Ok(text_result("updates 列表不能为空".to_owned(), true));
+                }
+                let mut task: Option<crate::models::task::Task> = None;
+                for item_update in &updates {
+                    let index = item_update.index as usize;
+                    match core::update_checklist_item(
+                        &self.store,
+                        &full_id,
+                        index,
+                        item_update.task.as_deref(),
+                        item_update.detailed_description.as_deref(),
+                        item_update.context_and_plan.as_ref().map(|o| o.as_deref()),
+                        item_update.done,
+                    )
+                    .await
+                    {
+                        Ok(t) => task = Some(t),
+                        Err(e) => {
+                            return Ok(text_result(
+                                format!("batch_update item[{}]: {e}", item_update.index),
+                                true,
+                            ));
+                        }
+                    }
+                }
+                // 返回最终状态（最后一次 update 后的 task）
+                match task {
+                    Some(t) => Ok(task_to_result(&t)),
+                    None => Ok(text_result("updates 列表不能为空".to_owned(), true)),
+                }
             }
         }
     }
@@ -438,48 +462,27 @@ impl PinchTaskServer {
     // ------------------------------------------------------------------
     #[tool(
         name = "list_tasks",
-        description = "List all tasks sorted by creation time. Usage: Call at the start of a session to get an overview of all existing tasks and their progress. Returns a concise summary, not full details. Optionally provide project_id to filter tasks belonging to a specific project. Both task IDs and project IDs support short ID prefix matching (minimum 4 characters of the UUID)."
+        description = "List tasks with smart formatting. Tasks are grouped by status (in progress → not started → completed), sorted by priority within each group, and truncated when there are many tasks. Pass \"*\" as project_id to list tasks across all projects, or provide a specific project ID to filter. Project IDs support short ID prefix matching (minimum 4 characters of the UUID)."
     )]
     pub async fn list_tasks(
         &self,
         Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        // 显式 project_id 优先，否则使用 workspace 自动关联
-        let effective_project = params
-            .project_id
-            .as_deref()
-            .or(self.workspace_project_id.as_deref());
-
-        if let Some(project_id) = effective_project {
+        if params.project_id == "*" {
+            self.store
+                .list_tasks()
+                .await
+                .into_tool_result(|tasks| text_result(core::format_task_list_smart(&tasks), false))
+        } else {
             let full_project_id =
-                match core::resolve_project_id_async(&self.store, project_id, 10).await {
+                match core::resolve_project_id_async(&self.store, &params.project_id, 10).await {
                     Ok(id) => id,
                     Err(e) => return Ok(text_result(format!("{e}"), true)),
                 };
-            core::get_tasks_for_project(&self.store, &full_project_id)
+            self.store
+                .get_tasks_for_project(&full_project_id)
                 .await
-                .into_tool_result(|tasks| {
-                    if tasks.is_empty() {
-                        text_result("该项目下没有任何任务".to_owned(), false)
-                    } else {
-                        let mut summary = String::new();
-                        for task in &tasks {
-                            let total = task.checklist.len();
-                            let done = task.checklist.iter().filter(|i| i.done).count();
-                            summary.push_str(&format!(
-                                "ID: {}\n任务: {}\n进度: {done}/{total}\n创建时间: {}\n\n",
-                                &task.id[..8.min(task.id.len())],
-                                task.task_description,
-                                task.created_at
-                            ));
-                        }
-                        text_result(summary, false)
-                    }
-                })
-        } else {
-            core::list_tasks_summary(&self.store)
-                .await
-                .into_tool_result(|s| text_result(s, false))
+                .into_tool_result(|tasks| text_result(core::format_task_list_smart(&tasks), false))
         }
     }
 

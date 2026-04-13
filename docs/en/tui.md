@@ -19,6 +19,8 @@ pinchtask tui
 pinchtask tui -D /path/to/data
 ```
 
+If a `.pinchproject` file exists in the current directory or any parent directory, the TUI automatically selects the corresponding project on launch.
+
 ## Views
 
 The TUI uses a split-pane layout with optional overlay dialogs.

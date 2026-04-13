@@ -441,6 +441,31 @@ Removes the task from the project but does not delete the task itself.
 pinchtask project rm-task abcd1234 a1b2c3d4
 ```
 
+#### `project init` — Initialize Workspace Project File
+
+```bash
+pinchtask project init <PROJECT_ID> [OPTIONS]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `<PROJECT_ID>` | | Project ID (short prefix supported) |
+| `--force` | `-f` | Overwrite an existing `.pinchproject` file |
+
+Creates a `.pinchproject` file in the current directory containing the specified project ID. This enables automatic project association for CLI, TUI, and MCP operations in this directory and its subdirectories.
+
+If a `.pinchproject` file already exists, the command will fail unless `--force` is specified.
+
+**Examples:**
+
+```bash
+# Initialize workspace for a project
+pinchtask project init abcd1234
+
+# Overwrite existing .pinchproject file
+pinchtask project init abcd1234 --force
+```
+
 ---
 
 ### `serve` — Start MCP Server
@@ -492,6 +517,12 @@ Place a `.pinchproject` file in your project root directory containing the proje
 ```
 # .pinchproject
 550e8400-e29b-41d4-a716-446655440000
+```
+
+Alternatively, you can create this file using the `project init` command:
+
+```bash
+pinchtask project init abcd1234
 ```
 
 When running CLI commands from this directory (or any subdirectory), the project ID from the file is automatically used:

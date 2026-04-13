@@ -109,7 +109,7 @@ pinchtask [OPTIONS] [COMMAND]
   item        清单条目管理 (add, check, mv, summary, edit, rm)
   note        笔记管理 (add, rm)
   link        资源引用管理 (add, rm)
-  project     项目管理 (new, ls, show, edit, rm, add-task, rm-task, init)
+  project     项目管理 (new, ls, show, rm, add-task, rm-task, init)
   serve       启动 MCP 服务器
   completion  生成 shell 补全脚本
 ```
