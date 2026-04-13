@@ -483,6 +483,29 @@ pinchtask project rm-task <项目ID> <任务ID>
 pinchtask project rm-task b1c2d3e4 a1b2c3d4
 ```
 
+### `project init` — 初始化工作区项目关联
+
+```bash
+pinchtask project init <项目ID> [OPTIONS]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `<项目ID>` | 项目 ID（支持短前缀） |
+| `-f, --force` | 覆盖已存在的 `.pinchproject` 文件 |
+
+在当前目录创建 `.pinchproject` 文件，写入指定项目 ID，用于工作区自动关联。如果文件已存在，需要 `--force` 参数才能覆盖。
+
+示例：
+
+```bash
+# 在当前目录初始化工作区关联
+pinchtask project init b1c2d3e4
+
+# 覆盖已存在的 .pinchproject 文件
+pinchtask project init b1c2d3e4 --force
+```
+
 ---
 
 ## serve — 启动 MCP 服务器

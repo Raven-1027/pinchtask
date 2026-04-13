@@ -97,16 +97,11 @@ When multiple matches exist, the first 10 candidate tasks/projects are listed, p
 
 ## Workspace Project Association (.pinchproject)
 
-Place a `.pinchproject` file in the MCP server's startup directory (or any parent directory) containing the project UUID. The server automatically resolves this file on startup.
+Place a `.pinchproject` file in a project root directory (containing the project UUID) to enable workspace association.
 
-When the following tools are called without an explicit `project_id` parameter, the project ID from `.pinchproject` is automatically used:
+**MCP layer**: `new_task` and `list_tasks` no longer auto-inject workspace project_id. `project_id` must be explicitly provided.
 
-- `new_task` — Automatically associates the task with the project from `.pinchproject`
-- `list_tasks` — Automatically filters tasks by that project
-
-**Priority**: Explicit `project_id` > `.pinchproject` > No project
-
-Note: The MCP server's CWD depends on the AI client's launch configuration. If the client starts `pinchtask serve` from a project directory, `.pinchproject` takes effect.
+**CLI layer**: `task new` and `task ls` still support auto-using the project ID from `.pinchproject` when `--project` is not specified. See the CLI documentation for details.
 
 ## Tools
 
@@ -128,7 +123,7 @@ Create a new task with a description, optional checklist items, notes, resources
 | `notes` | `array<string>` | No | Optional initial notes |
 | `resources` | `array` | No | Optional initial resources |
 | `metadata` | `object` | No | Optional metadata (tags, priority, estimated completion time) |
-| `project_id` | `string` | No | Optional project ID to associate the task with at creation time (supports short ID prefix matching) |
+| `project_id` | `string` | Yes | Project ID to associate the task with at creation time (supports short ID prefix matching) |
 
 **`initial_checklist` item structure:**
 
@@ -243,7 +238,7 @@ Perform operations on checklist items. This is the single entry point for all ch
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `action` | `string` | Yes | Operation: `"add"`, `"update"`, `"reorder"`, or `"remove"` |
+| `action` | `string` | Yes | Operation: `"add"`, `"update"`, `"reorder"`, `"remove"`, or `"batch_update"` |
 | `task_id` | `string` | Yes | The ID of the task (supports short ID prefix matching) |
 | `task` | `string` | For `add` | Short yet comprehensive name for the item |
 | `detailed_description` | `string` | For `add` | Longer description about what to achieve |
@@ -252,6 +247,7 @@ Perform operations on checklist items. This is the single entry point for all ch
 | `to_index` | `integer` | For `reorder` | New 0-based index |
 | `context_and_plan` | `string` or `null` | For `update` | Related info and plan. Pass `null` to clear, omit to keep unchanged |
 | `done` | `boolean` | For `update` | `true` = mark done, `false` = mark undone |
+| `updates` | `array` | For `batch_update` | List of item updates to apply sequentially |
 
 **Action details:**
 
@@ -259,6 +255,7 @@ Perform operations on checklist items. This is the single entry point for all ch
 - **`update`** — Modify an existing item. Requires `index`. Only specified fields are changed.
 - **`reorder`** — Move an item. Requires `from_index` and `to_index`. After reordering, indices change.
 - **`remove`** — Delete an item. Requires `index`. After removal, subsequent indices shift down by 1.
+- **`batch_update`** — Update multiple items in a single request. Provide `updates` array, each element specifies `index` and fields to change. Items are updated sequentially. Useful for bulk marking completion.
 
 **Returns:** The updated task object as JSON.
 
@@ -294,6 +291,30 @@ Perform operations on checklist items. This is the single entry point for all ch
   "to_index": 2
 }
 ```
+
+**Example — Batch update items:**
+
+```json
+{
+  "action": "batch_update",
+  "task_id": "abc12345-...",
+  "updates": [
+    {"index": 0, "done": true},
+    {"index": 1, "done": true},
+    {"index": 2, "done": true}
+  ]
+}
+```
+
+**`updates` item structure:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `index` | `integer` | Yes | 0-based index of the checklist item |
+| `task` | `string` | No | New short name |
+| `detailed_description` | `string` | No | New detailed description |
+| `context_and_plan` | `string` or `null` | No | New context and plan (`null` to clear) |
+| `done` | `boolean` | No | Whether the item is done |
 
 ---
 
@@ -371,21 +392,29 @@ Delete a task by its ID. **This is an irreversible operation.** Confirm the `tas
 
 ### `list_tasks`
 
-List all tasks sorted by creation time. Call at the start of a session to get an overview of all existing tasks and their progress. Optionally provide `project_id` to filter tasks belonging to a specific project.
+List tasks grouped by status. Tasks are organized into three groups — In Progress → Not Started → Completed — with items sorted by priority (high > medium > low) within each group. When the total number of tasks exceeds 10, the Not Started and Completed groups are automatically truncated to show only the first 3 items, along with a summary count.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `project_id` | `string` | No | Filter tasks by project ID (supports short ID prefix matching). Only tasks belonging to the specified project are returned. |
+| `project_id` | `string` | Yes | Project ID (supports short ID prefix matching). Pass `"*"` to query across all projects. |
 
-**Returns:** A concise text summary of all tasks (not full details). Use `new_task` or individual task queries for full information.
+**Returns:** A concise text summary grouped by status (not full details). Use `new_task` or individual task queries for full information.
 
-**Example — Filter by project:**
+**Example — Query a specific project:**
 
 ```json
 {
   "project_id": "def67890-..."
+}
+```
+
+**Example — Query across all projects:**
+
+```json
+{
+  "project_id": "*"
 }
 ```
 

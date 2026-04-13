@@ -119,9 +119,9 @@ pub async fn run_task(
     match command {
         TaskCommands::New(args) => run_new(args, store, json, workspace_project_id).await,
         TaskCommands::Ls(args) => run_ls(args, store, json, workspace_project_id).await,
-        TaskCommands::Show(args) => run_show(args, store, json, workspace_project_id).await,
-        TaskCommands::Edit(args) => run_edit(args, store, json, workspace_project_id).await,
-        TaskCommands::Rm(args) => run_rm(args, store, json, workspace_project_id).await,
+        TaskCommands::Show(args) => run_show(args, store, json).await,
+        TaskCommands::Edit(args) => run_edit(args, store, json).await,
+        TaskCommands::Rm(args) => run_rm(args, store, json).await,
     }
 }
 
@@ -142,6 +142,11 @@ async fn run_new(
             "auto-associating task with workspace project"
         );
     }
+    let project_id = project_id.ok_or_else(|| {
+        anyhow::anyhow!(
+            "未指定项目。请使用 --project <项目ID> 指定项目，或在项目目录中创建 .pinchproject 文件。\n  提示: 使用 `pinchtask project ls` 查看可用项目"
+        )
+    })?;
 
     let task = core::initialize_task(
         store,
@@ -151,7 +156,7 @@ async fn run_new(
         vec![],
         vec![],
         None,
-        project_id,
+        Some(project_id),
     )
     .await?;
     output::print(output::Output::Task(&task), json);
@@ -246,12 +251,7 @@ async fn run_ls(
 }
 
 /// 查看任务详情。
-async fn run_show(
-    args: &ShowArgs,
-    store: &TaskStore,
-    json: bool,
-    _workspace_project_id: Option<&str>,
-) -> Result<()> {
+async fn run_show(args: &ShowArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
     let task = store.get_task(&full_id).await?;
@@ -260,12 +260,7 @@ async fn run_show(
 }
 
 /// 编辑任务描述、上下文或元数据。
-async fn run_edit(
-    args: &TaskEditArgs,
-    store: &TaskStore,
-    json: bool,
-    _workspace_project_id: Option<&str>,
-) -> Result<()> {
+async fn run_edit(args: &TaskEditArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
 
@@ -320,12 +315,7 @@ async fn run_edit(
 }
 
 /// 删除任务。
-async fn run_rm(
-    args: &TaskRmArgs,
-    store: &TaskStore,
-    json: bool,
-    _workspace_project_id: Option<&str>,
-) -> Result<()> {
+async fn run_rm(args: &TaskRmArgs, store: &TaskStore, json: bool) -> Result<()> {
     let tasks = store.list_tasks().await?;
     let full_id = resolve_task_id(&args.id, &tasks)?;
     core::clear_task(store, &full_id).await?;

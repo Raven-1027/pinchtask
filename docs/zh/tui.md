@@ -22,6 +22,8 @@ pinchtask tui -D /path/to/data
 cargo run --features tui -- tui
 ```
 
+如果当前目录或上级目录存在 `.pinchproject` 文件，TUI 启动时会自动选中对应项目。
+
 ## 界面布局
 
 TUI 采用左右分栏布局：
