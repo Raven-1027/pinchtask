@@ -5,10 +5,10 @@
 **pinchtask** 是一个基于 Model Context Protocol (MCP) 的任务管理工具，为 AI Agent 提供结构化的任务管理能力。支持 **CLI 本地操作**、**MCP 服务器** 和 **交互式 TUI** 三种使用模式，共享同一套核心业务逻辑与数据存储。
 
 - **语言**: Rust (Edition 2024)
-- **版本**: 0.3.0
+- **版本**: 0.4.0
 - **许可证**: MIT
-- **代码量**: ~12000 行 Rust 代码
-- **构建状态**: 编译通过，114 个测试全部通过（96 单元测试 + 18 集成测试）
+- **代码量**: ~12700 行 Rust 代码
+- **构建状态**: 编译通过，127 个测试全部通过（109 单元测试 + 18 集成测试）
 
 ## 技术栈
 
@@ -50,10 +50,6 @@ pinchtask/
 │   │   ├── mod.rs           # 模块入口
 │   │   ├── task.rs          # Task, ChecklistItem, Resource, TaskMetadata
 │   │   └── project.rs       # Project
-│   ├── protocol/            # MCP JSON-RPC 协议类型
-│   │   └── types.rs         # Request/Response/ToolDefinition 等
-│   ├── transport/           # stdio 传输层
-│   │   └── mod.rs           # 换行分隔 JSON + Content-Length 双格式支持
 │   ├── tools/               # MCP 工具参数定义与测试
 │   │   ├── mod.rs           # 模块入口
 │   │   ├── params.rs        # 工具参数结构体 + json_schema_for() 内联 $ref
@@ -72,10 +68,10 @@ pinchtask/
 │   └── cli/                 # CLI 命令处理
 │       ├── mod.rs           # 顶层参数解析与嵌套子命令分发
 │       ├── task.rs          # task new / ls / show / edit / rm
-│       ├── item.rs          # item add / check / mv / summary / edit / rm
-│       ├── note.rs          # note add / rm
-│       ├── link.rs          # link add / rm
-│       ├── project.rs       # project new / ls / show / edit / rm / add-task / rm-task
+│       ├── item.rs          # item new / edit / check / mv / rm / summary
+│       ├── note.rs          # note new
+│       ├── link.rs          # link new
+│       ├── project.rs       # project new / ls / show / rm / add-task / rm-task / init
 │       ├── output.rs        # 统一输出格式化
 │       ├── resolve.rs       # 短 ID 前缀匹配
 │       ├── logging.rs       # 日志初始化
@@ -87,11 +83,14 @@ pinchtask/
 ├── tests/
 │   └── integration_test.rs  # MCP 协议集成测试
 ├── docs/
-│   ├── architecture.md      # 架构文档
-│   ├── cli-reference.md     # CLI 参考文档
-│   ├── cli-redesign.md      # CLI 重设计记录
-│   ├── mcp-protocol.md      # MCP 协议说明
-│   └── tui-design.md        # TUI 设计文档
+│   ├── zh/                  # 中文文档
+│   │   ├── cli.md           # CLI 参考文档
+│   │   ├── mcp.md           # MCP 协议说明
+│   │   └── tui.md           # TUI 设计文档
+│   └── en/                  # 英文文档
+│       ├── cli.md           # CLI reference
+│       ├── mcp.md           # MCP protocol
+│       └── tui.md           # TUI design
 ├── Cargo.toml
 └── README.md
 ```
@@ -131,37 +130,37 @@ pinchtask/
 
 | 工具名                     | 功能                                                 |
 | -------------------------- | ---------------------------------------------------- |
-| `new_task`                 | 创建新任务（支持初始清单/笔记/资源/元数据/项目关联） |
+| `new_task`                 | 创建新任务（project_id 必填，支持初始清单/笔记/资源/元数据） |
 | `update_task`              | 统一更新多个任务字段（含项目关联）。task_id 支持短 ID 前缀匹配 |
 | `manage_checklist_item`    | 统一管理清单条目（add/update/reorder/remove）。task_id 支持短 ID 前缀匹配 |
 | `add_note`                 | 添加笔记。task_id 支持短 ID 前缀匹配                 |
 | `add_resource`             | 添加资源引用。task_id 支持短 ID 前缀匹配             |
 | `get_checklist_summary`    | 获取清单进度摘要。task_id 支持短 ID 前缀匹配         |
 | `clear_task`               | 删除任务。task_id 支持短 ID 前缀匹配                 |
-| `list_tasks`               | 列出所有任务（支持按项目过滤）。project_id 支持短 ID 前缀匹配 |
+| `list_tasks`               | 按状态分组列出任务（进行中→未开始→已完成，组内按优先级排序）。project_id 必填，支持短 ID 前缀匹配，`"*"` 表示跨所有项目查询。支持 `status_filter` 按状态筛选，`include_all` 跳过截断逻辑 |
 | `manage_project`           | 统一管理项目（create/get/update/delete/list）。project_id 支持短 ID 前缀匹配 |
 
 ### 工作区自动关联
 
-在项目根目录放置 `.pinchproject` 文件（内容为项目 UUID），CLI/TUI/MCP 操作时自动注入 `project_id`。
+在项目根目录放置 `.pinchproject` 文件（内容为项目 UUID），CLI/TUI 操作时自动注入 `project_id`。
 
 | 前端 | 自动注入行为 |
 |------|------------|
 | CLI | `task new` / `task ls` 未指定 `--project` 时自动使用 `.pinchproject` 中的项目 ID |
 | TUI | 启动时自动选中 `.pinchproject` 指定的项目 |
-| MCP | `new_task` / `list_tasks` 未指定 `project_id` 时自动使用服务器启动目录的 `.pinchproject` |
+| MCP | `new_task` 和 `list_tasks` 不再自动注入 workspace project_id，必须显式传入 |
 
-优先级：显式指定 > `.pinchproject` 文件 > 无项目（None）
+优先级（仅适用于 CLI `task new`）：显式指定 > `.pinchproject` 文件 > 无项目（None）
 
 ### CLI 命令（嵌套子命令结构）
 
 | 顶层命令     | 子命令                                                   |
 | ------------ | -------------------------------------------------------- |
 | `task`       | `new`, `ls`, `show`, `edit`, `rm`                        |
-| `item`       | `add`, `check`, `mv`, `summary`, `edit`, `rm`            |
-| `note`       | `add`, `rm`                                              |
-| `link`       | `add`, `rm`                                              |
-| `project`    | `new`, `ls`, `show`, `edit`, `rm`, `add-task`, `rm-task` |
+| `item`       | `new`, `edit`, `check`, `mv`, `rm`, `summary`            |
+| `note`       | `new`                                                    |
+| `link`       | `new`                                                    |
+| `project`    | `new`, `ls`, `show`, `rm`, `add-task`, `rm-task`, `init` |
 | `serve`      | 启动 MCP 服务器                                          |
 | `tui`        | 启动交互式 TUI（需 `tui` feature）                       |
 | `completion` | 生成 shell 补全脚本                                      |
@@ -216,14 +215,14 @@ Project {
 - 项目管理功能（CRUD、任务关联，一对多外键模型）
 - 完整的交互式 TUI 界面（ratatui + crossterm），支持任务/项目列表、详情、创建/编辑表单
 - TUI 作为可选 feature，默认禁用（`cargo run --features tui -- tui`）
-- 104 个测试全部通过（86 单元测试 + 18 集成测试）
+- 100+ 个测试全部通过（单元测试 + 集成测试）
 - tools/params 模块包含 schema 内联验证测试
 - TUI 模块包含单元测试（FormField、SortMode、TaskFormState、主题函数）
 - 双格式 stdio 传输（换行分隔 JSON + Content-Length 头）
 - 短 ID 前缀匹配
 - JSON 输出模式（`--json`）
 - Shell 补全脚本生成
-- `.pinchproject` 工作区自动关联（CLI/TUI/MCP 三端支持）
+- `.pinchproject` 工作区自动关联（CLI/TUI 两端支持，MCP 需显式传入 project_id）
 
 ### ⚠️ 已知问题
 
@@ -258,13 +257,13 @@ pub async fn my_tool(&self, Parameters(p): Parameters<MyParams>) -> ... { ... }
 
 | 变更范围 | 需同步检查的文档 |
 |----------|-----------------|
-| CLI 命令/参数增删改 | `docs/cli-reference.md`、`README.md`（CLI 用法、快速开始） |
-| MCP 工具增删改 | `AGENT.md`（MCP 工具表）、`docs/mcp-protocol.md` |
-| 数据模型变更 | `AGENT.md`（数据模型章节）、`docs/architecture.md` |
+| CLI 命令/参数增删改 | `docs/zh/cli.md`、`docs/en/cli.md`、`README.md`（CLI 用法、快速开始） |
+| MCP 工具增删改 | `AGENT.md`（MCP 工具表）、`docs/zh/mcp.md`、`docs/en/mcp.md` |
+| 数据模型变更 | `AGENT.md`（数据模型章节） |
 | 项目结构变更（新增/删除/重命名模块） | `AGENT.md`（项目结构树）、`README.md`（项目结构） |
 | 新增/删除依赖 | `AGENT.md`（技术栈表） |
 | 退出码/错误类型变更 | `AGENT.md`（退出码约定）、`README.md`（退出码） |
-| TUI 功能变更 | `README.md`（TUI 快捷键表）、`docs/tui-design.md` |
+| TUI 功能变更 | `README.md`（TUI 快捷键表）、`docs/zh/tui.md`、`docs/en/tui.md` |
 | 构建方式/feature 变更 | `AGENT.md`（开发命令）、`README.md`（安装/构建） |
 | 版本发布 | `Cargo.toml`（version）、`AGENT.md`（版本号、代码量）、`README.md.en`（如有）、`CHANGELOG.md` |
 

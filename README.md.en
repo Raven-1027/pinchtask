@@ -77,14 +77,17 @@ pinchtask serve
 
 ### Workspace Project Association
 
-Create a `.pinchproject` file in your project root directory containing the project UUID:
+Use the `project init` command to create a `.pinchproject` file in the current directory:
 
 ```bash
 # First create a project
 pinchtask project new "My Project"
 
-# Create .pinchproject file in the project root
-echo "PROJECT_UUID" > .pinchproject
+# Initialize workspace association in the project root (project_id supports short prefix matching)
+pinchtask project init <PROJECT_ID>
+
+# If the file already exists, use --force to overwrite
+pinchtask project init <PROJECT_ID> --force
 ```
 
 When running `task new`, `task ls`, and other commands from this directory (or any subdirectory), tasks are automatically associated with that project. Explicit `--project` flag always takes priority.
@@ -106,7 +109,7 @@ Commands:
   item        Checklist item management (add, check, mv, summary, edit, rm)
   note        Note management (add, rm)
   link        Resource reference management (add, rm)
-  project     Project management (new, ls, show, edit, rm, add-task, rm-task)
+  project     Project management (new, ls, show, rm, add-task, rm-task, init)
   serve       Start MCP server
   completion  Generate shell completion scripts
 ```

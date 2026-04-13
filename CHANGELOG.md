@@ -5,6 +5,43 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-04-13
+
+### Changed
+
+- `list_tasks` MCP 工具的 `project_id` 参数从可选改为必填（`Option<String>` → `String`），传入 `"*"` 表示跨所有项目查询
+- `list_tasks` MCP 工具返回格式改为按状态分组（进行中 → 未开始 → 已完成），组内按优先级排序（high > medium > low > 无），同优先级按创建时间升序
+- `list_tasks` MCP 工具在任务总数超过 10 时自动截断未开始和已完成组（仅展示前 3 条 + 统计摘要），进行中组始终全量展示
+- 移除 MCP 层的 `workspace_project_id` 自动关联回退（`list_tasks` 和 `new_task` 均不再回退）
+- `new_task` MCP 工具的 `project_id` 参数从可选改为必填（`Option<String>` → `String`）
+- `task new` CLI 命令在无 `--project` 且无 `.pinchproject` 时报错提示
+- `task show`、`task edit`、`task rm` CLI 命令移除未使用的 `_workspace_project_id` 参数
+
+### Added
+
+- `TaskStatus` 枚举（`Completed`/`InProgress`/`NotStarted`），根据清单完成情况推导任务状态
+- `derive_task_status(task)` 函数：从 `Task` 推导 `TaskStatus`
+- `priority_rank(task)` 函数：将优先级映射为排序权重（high=0, medium=1, low=2, none=3）
+- `format_task_list_smart(tasks)` 函数：按状态分组、优先级排序、超量截断的智能格式化
+- 13 个 core 层单元测试（derive_task_status 4 个、priority_rank 5 个、format_task_list_smart 4 个）
+- 2 个 MCP 集成测试（`test_list_tasks_with_asterisk`、`test_list_tasks_with_project_filter`）
+
+### Removed
+
+- `list_tasks` handler 中对 `core::list_tasks_summary()` 的调用（已被 `format_task_list_smart` 替代）
+- `PinchTaskServer` 结构体的 `workspace_project_id` 字段（MCP 层不再有 workspace 自动关联回退）
+- `PinchTaskServer::new_without_workspace()` 构造器（与 `new()` 合并）
+
+[0.4.0]: https://github.com/Raven-1027/pinchtask/releases/tag/v0.4.0
+
+## [0.3.1] - 2026-04-12
+
+### Added
+
+- `project init` CLI 命令：在当前目录创建 `.pinchproject` 文件，将目录关联到指定项目（支持短前缀匹配）
+- `project init --force` 选项：覆盖已存在的 `.pinchproject` 文件
+- `core::workspace::write_pinproject_file()` 函数：写入带注释头的 `.pinchproject` 文件
+
 ## [0.3.0] - 2026-04-11
 
 ### Added

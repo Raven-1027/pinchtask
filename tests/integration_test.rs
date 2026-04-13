@@ -25,6 +25,23 @@ async fn test_server() -> (PinchTaskServer, TempDir) {
     (server, dir)
 }
 
+/// 创建一个测试项目并返回其 ID。
+async fn test_project(server: &PinchTaskServer) -> String {
+    let result = server
+        .manage_project(Parameters(ManageProjectParams {
+            action: ProjectAction::Create,
+            project_id: None,
+            name: Some("测试项目".to_owned()),
+            description: None,
+            delete_tasks: None,
+        }))
+        .await
+        .expect("创建测试项目失败");
+    let text = extract_text(&result).expect("项目结果应有 text");
+    let project: serde_json::Value = serde_json::from_str(&text).expect("项目 text 应为合法 JSON");
+    project["id"].as_str().unwrap().to_owned()
+}
+
 /// 从 CallToolResult 中提取第一个 content 的 text 字段。
 fn extract_text(result: &rmcp::model::CallToolResult) -> Option<String> {
     let json = serde_json::to_value(result).ok()?;
@@ -119,6 +136,7 @@ async fn test_tool_schemas_are_valid() {
 #[tokio::test]
 async fn test_initialize_task_creates_task() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -128,7 +146,7 @@ async fn test_initialize_task_creates_task() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .expect("initialize_task 不应返回 ErrorData");
@@ -148,6 +166,7 @@ async fn test_initialize_task_creates_task() {
 #[tokio::test]
 async fn test_initialize_task_with_checklist() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -172,7 +191,7 @@ async fn test_initialize_task_with_checklist() {
             notes: Some(vec!["一条笔记".to_owned()]),
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .expect("initialize_task 不应返回 ErrorData");
@@ -192,6 +211,7 @@ async fn test_initialize_task_with_checklist() {
 #[tokio::test]
 async fn test_add_checklist_item_and_mark_done() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     // 创建任务
     let result = server
@@ -202,7 +222,7 @@ async fn test_add_checklist_item_and_mark_done() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -250,6 +270,7 @@ async fn test_add_checklist_item_and_mark_done() {
 #[tokio::test]
 async fn test_list_tasks_after_creating_two() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     for desc in ["任务A", "任务B"] {
         server
@@ -260,14 +281,17 @@ async fn test_list_tasks_after_creating_two() {
                 notes: None,
                 resources: None,
                 metadata: None,
-                project_id: None,
+                project_id: pid.clone(),
             }))
             .await
             .unwrap();
     }
 
     let result = server
-        .list_tasks(Parameters(ListTasksParams { project_id: None }))
+        .list_tasks(Parameters(ListTasksParams {
+            project_id: pid.clone(),
+            ..Default::default()
+        }))
         .await
         .unwrap();
 
@@ -280,6 +304,7 @@ async fn test_list_tasks_after_creating_two() {
 #[tokio::test]
 async fn test_mark_done_and_get_summary() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     // 创建带两个检查项的任务
     let result = server
@@ -305,7 +330,7 @@ async fn test_mark_done_and_get_summary() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -347,6 +372,7 @@ async fn test_mark_done_and_get_summary() {
 #[tokio::test]
 async fn test_add_note_and_resource() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -356,7 +382,7 @@ async fn test_add_note_and_resource() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -397,6 +423,7 @@ async fn test_add_note_and_resource() {
 #[tokio::test]
 async fn test_update_task_unified() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -406,7 +433,7 @@ async fn test_update_task_unified() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -442,6 +469,7 @@ async fn test_update_task_unified() {
 #[tokio::test]
 async fn test_update_task_with_no_fields_returns_error() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -451,7 +479,7 @@ async fn test_update_task_with_no_fields_returns_error() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -479,6 +507,7 @@ async fn test_update_task_with_no_fields_returns_error() {
 #[tokio::test]
 async fn test_clear_task_deletes_task() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -488,7 +517,7 @@ async fn test_clear_task_deletes_task() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -524,6 +553,7 @@ async fn test_clear_task_deletes_task() {
 #[tokio::test]
 async fn test_reorder_checklist_item() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -555,7 +585,7 @@ async fn test_reorder_checklist_item() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -586,6 +616,7 @@ async fn test_reorder_checklist_item() {
 #[tokio::test]
 async fn test_remove_checklist_item() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -610,7 +641,7 @@ async fn test_remove_checklist_item() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -637,6 +668,7 @@ async fn test_remove_checklist_item() {
 #[tokio::test]
 async fn test_update_metadata() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -646,7 +678,7 @@ async fn test_update_metadata() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -678,6 +710,7 @@ async fn test_update_metadata() {
 #[tokio::test]
 async fn test_update_context_and_description() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -687,7 +720,7 @@ async fn test_update_context_and_description() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -733,6 +766,7 @@ async fn test_update_context_and_description() {
 #[tokio::test]
 async fn test_mark_undone() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -748,7 +782,7 @@ async fn test_mark_undone() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -775,6 +809,7 @@ async fn test_mark_undone() {
 #[tokio::test]
 async fn test_update_checklist_item_partial() {
     let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
 
     let result = server
         .new_task(Parameters(InitializeTaskParams {
@@ -790,7 +825,7 @@ async fn test_update_checklist_item_partial() {
             notes: None,
             resources: None,
             metadata: None,
-            project_id: None,
+            project_id: pid.clone(),
         }))
         .await
         .unwrap();
@@ -834,4 +869,78 @@ async fn test_update_checklist_item_partial() {
         task["checklist"][0]["context_and_plan"].is_null(),
         "context_and_plan 应被清空为 null"
     );
+}
+
+#[tokio::test]
+async fn test_list_tasks_with_status_filter() {
+    let (server, _dir) = test_server().await;
+    let pid = test_project(&server).await;
+
+    // 创建不同状态的任务
+    let _ = server
+        .new_task(Parameters(InitializeTaskParams {
+            task_description: "进行中任务".to_owned(),
+            context_for_all_tasks: None,
+            initial_checklist: Some(vec![
+                InitialChecklistItem {
+                    task: "项1".to_owned(),
+                    detailed_description: "".to_owned(),
+                    context_and_plan: None,
+                    done: true,
+                    id: None,
+                },
+                InitialChecklistItem {
+                    task: "项2".to_owned(),
+                    detailed_description: "".to_owned(),
+                    context_and_plan: None,
+                    done: false,
+                    id: None,
+                },
+            ]),
+            notes: None,
+            resources: None,
+            metadata: None,
+            project_id: pid.clone(),
+        }))
+        .await;
+
+    let _ = server
+        .new_task(Parameters(InitializeTaskParams {
+            task_description: "未开始任务".to_owned(),
+            context_for_all_tasks: None,
+            initial_checklist: None,
+            notes: None,
+            resources: None,
+            metadata: None,
+            project_id: pid.clone(),
+        }))
+        .await;
+
+    // 用 status_filter 筛选进行中任务
+    let result = server
+        .list_tasks(Parameters(ListTasksParams {
+            project_id: pid.clone(),
+            status_filter: Some("in_progress".to_owned()),
+            include_all: None,
+        }))
+        .await
+        .unwrap();
+
+    let text = extract_text(&result).unwrap();
+    assert!(text.contains("进行中任务"), "应包含进行中任务");
+    assert!(!text.contains("未开始任务"), "不应包含未开始任务");
+
+    // 用无效的 status_filter（等同于不过滤）
+    let result = server
+        .list_tasks(Parameters(ListTasksParams {
+            project_id: pid.clone(),
+            status_filter: Some("invalid_status".to_owned()),
+            include_all: None,
+        }))
+        .await
+        .unwrap();
+
+    let text = extract_text(&result).unwrap();
+    assert!(text.contains("进行中任务"), "无效过滤应显示全部任务");
+    assert!(text.contains("未开始任务"), "无效过滤应显示全部任务");
 }

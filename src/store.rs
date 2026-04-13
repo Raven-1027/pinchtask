@@ -375,6 +375,278 @@ impl TaskStore {
         Ok(())
     }
 
+    /// 获取指定索引位置的 checklist item 的 ID（按 sort_order 排序，0-based）。
+    pub async fn get_checklist_item_id_by_index(
+        &self,
+        task_id: &str,
+        index: usize,
+    ) -> Result<String, StoreError> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM checklist_items WHERE task_id = ? ORDER BY sort_order ASC LIMIT 1 OFFSET ?",
+        )
+        .bind(task_id)
+        .bind(index as i64)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some((id,)) => Ok(id),
+            None => Err(StoreError::NotFound(format!("清单条目索引越界: {index}"))),
+        }
+    }
+
+    /// 获取指定任务的 checklist item 数量。
+    pub async fn get_checklist_item_count(&self, task_id: &str) -> Result<i64, StoreError> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM checklist_items WHERE task_id = ?")
+            .bind(task_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.0)
+    }
+
+    /// 原子更新单个 checklist item 的指定字段。仅更新非 None 的字段。
+    /// 使用事务确保多字段更新的原子性。
+    /// context_and_plan 使用 Option<Option<&str>>：
+    ///   - None（外层）→ 不更新该字段
+    ///   - Some(None)（内层）→ 设置为 NULL
+    ///   - Some(Some("...")) → 设置为具体值
+    ///
+    /// 同时更新 tasks 表的 updated_at。
+    pub async fn update_checklist_item_atomic(
+        &self,
+        task_id: &str,
+        item_id: &str,
+        task_name: Option<&str>,
+        detailed_description: Option<&str>,
+        context_and_plan: Option<Option<&str>>,
+        done: Option<bool>,
+    ) -> Result<(), StoreError> {
+        // 如果所有字段都是 None，直接返回
+        if task_name.is_none()
+            && detailed_description.is_none()
+            && context_and_plan.is_none()
+            && done.is_none()
+        {
+            return Ok(());
+        }
+
+        let mut tx = self.pool.begin().await?;
+
+        if let Some(task_name) = task_name {
+            sqlx::query("UPDATE checklist_items SET task = ? WHERE task_id = ? AND id = ?")
+                .bind(task_name)
+                .bind(task_id)
+                .bind(item_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        if let Some(detailed_description) = detailed_description {
+            sqlx::query(
+                "UPDATE checklist_items SET detailed_description = ? WHERE task_id = ? AND id = ?",
+            )
+            .bind(detailed_description)
+            .bind(task_id)
+            .bind(item_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if let Some(cap) = context_and_plan {
+            match cap {
+                Some(s) => {
+                    sqlx::query("UPDATE checklist_items SET context_and_plan = ? WHERE task_id = ? AND id = ?")
+                        .bind(s)
+                        .bind(task_id)
+                        .bind(item_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                None => {
+                    sqlx::query("UPDATE checklist_items SET context_and_plan = NULL WHERE task_id = ? AND id = ?")
+                        .bind(task_id)
+                        .bind(item_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+            }
+        }
+
+        if let Some(done) = done {
+            sqlx::query("UPDATE checklist_items SET done = ? WHERE task_id = ? AND id = ?")
+                .bind(done)
+                .bind(task_id)
+                .bind(item_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        let updated_at = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tasks SET updated_at = ? WHERE id = ?")
+            .bind(&updated_at)
+            .bind(task_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// 原子插入一个新的 checklist item（追加到末尾）。
+    /// 自动计算 sort_order（当前最大值 + 1）。
+    /// 同时更新 tasks 表的 updated_at。
+    pub async fn insert_checklist_item_atomic(
+        &self,
+        task_id: &str,
+        item_id: &str,
+        task_name: &str,
+        detailed_description: &str,
+        context_and_plan: Option<&str>,
+        done: bool,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+
+        // 确认任务存在
+        let exists = sqlx::query("SELECT 1 FROM tasks WHERE id = ?")
+            .bind(task_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
+        if !exists {
+            return Err(StoreError::NotFound(task_id.to_owned()));
+        }
+
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM checklist_items WHERE task_id = ?",
+        )
+        .bind(task_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let next_order = row.0;
+
+        sqlx::query(
+            "INSERT INTO checklist_items (id, task_id, sort_order, task, detailed_description, context_and_plan, done) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(item_id)
+        .bind(task_id)
+        .bind(next_order)
+        .bind(task_name)
+        .bind(detailed_description)
+        .bind(context_and_plan)
+        .bind(done)
+        .execute(&mut *tx)
+        .await?;
+
+        let updated_at = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tasks SET updated_at = ? WHERE id = ?")
+            .bind(&updated_at)
+            .bind(task_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// 原子删除一个 checklist item，并重新编号剩余 item 的 sort_order。
+    /// 同时更新 tasks 表的 updated_at。
+    pub async fn remove_checklist_item_atomic(
+        &self,
+        task_id: &str,
+        item_id: &str,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+
+        let result = sqlx::query("DELETE FROM checklist_items WHERE task_id = ? AND id = ?")
+            .bind(task_id)
+            .bind(item_id)
+            .execute(&mut *tx)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(StoreError::NotFound(format!("清单条目不存在: {item_id}")));
+        }
+
+        // 获取剩余 items 并重新编号
+        let remaining: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM checklist_items WHERE task_id = ? ORDER BY sort_order ASC",
+        )
+        .bind(task_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        for (i, (id,)) in remaining.iter().enumerate() {
+            sqlx::query("UPDATE checklist_items SET sort_order = ? WHERE id = ?")
+                .bind(i as i64)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        let updated_at = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tasks SET updated_at = ? WHERE id = ?")
+            .bind(&updated_at)
+            .bind(task_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// 原子重排 checklist item 的位置。
+    /// from_index 和 to_index 均为 0-based。
+    /// 同时更新 tasks 表的 updated_at。
+    pub async fn reorder_checklist_item_atomic(
+        &self,
+        task_id: &str,
+        from_index: usize,
+        to_index: usize,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+
+        let items: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT id, sort_order FROM checklist_items WHERE task_id = ? ORDER BY sort_order ASC",
+        )
+        .bind(task_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if from_index >= items.len() {
+            return Err(StoreError::NotFound(format!("源索引越界: {from_index}")));
+        }
+        if to_index > items.len() {
+            return Err(StoreError::NotFound(format!("目标索引越界: {to_index}")));
+        }
+        if from_index == to_index {
+            return Ok(());
+        }
+
+        // 在内存中重排 id 列表
+        let mut ids: Vec<String> = items.into_iter().map(|(id, _)| id).collect();
+        let item = ids.remove(from_index);
+        let insert_pos = to_index.min(ids.len());
+        ids.insert(insert_pos, item);
+
+        // 重新编号所有 items
+        for (i, id) in ids.iter().enumerate() {
+            sqlx::query("UPDATE checklist_items SET sort_order = ? WHERE task_id = ? AND id = ?")
+                .bind(i as i64)
+                .bind(task_id)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        let updated_at = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tasks SET updated_at = ? WHERE id = ?")
+            .bind(&updated_at)
+            .bind(task_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// 列出所有已存储的任务。
     ///
     /// 按 `created_at` 升序排列返回，每个任务包含完整清单、笔记和资源。

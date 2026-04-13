@@ -77,14 +77,17 @@ pinchtask serve
 
 ### 工作区项目关联
 
-在项目根目录创建 `.pinchproject` 文件，内容为项目 UUID：
+使用 `project init` 命令在当前目录创建 `.pinchproject` 文件：
 
 ```bash
 # 先创建项目
 pinchtask project new "我的项目"
 
-# 在项目根目录创建 .pinchproject 文件
-echo "项目UUID" > .pinchproject
+# 在项目根目录初始化工作区关联（project_id 支持短前缀匹配）
+pinchtask project init <项目ID>
+
+# 如果文件已存在，使用 --force 覆盖
+pinchtask project init <项目ID> --force
 ```
 
 此后在该目录及子目录中执行 `task new`、`task ls` 等命令时，会自动关联到该项目。显式指定 `--project` 始终优先。
@@ -106,7 +109,7 @@ pinchtask [OPTIONS] [COMMAND]
   item        清单条目管理 (add, check, mv, summary, edit, rm)
   note        笔记管理 (add, rm)
   link        资源引用管理 (add, rm)
-  project     项目管理 (new, ls, show, edit, rm, add-task, rm-task)
+  project     项目管理 (new, ls, show, rm, add-task, rm-task, init)
   serve       启动 MCP 服务器
   completion  生成 shell 补全脚本
 ```

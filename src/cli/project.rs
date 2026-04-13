@@ -55,6 +55,14 @@ pub enum ProjectCommands {
         /// 任务 ID（支持短前缀）
         task_id: String,
     },
+    /// 在当前目录初始化 .pinchproject 文件
+    Init {
+        /// 项目 ID（支持短前缀）
+        project_id: String,
+        /// 覆盖已存在的 .pinchproject 文件
+        #[arg(short, long)]
+        force: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +86,9 @@ pub async fn run_project(command: &ProjectCommands, store: &TaskStore, json: boo
             project_id,
             task_id,
         } => run_remove_task(store, project_id, task_id, json).await,
+        ProjectCommands::Init { project_id, force } => {
+            run_init(store, project_id, *force, json).await
+        }
     }
 }
 
@@ -240,6 +251,37 @@ async fn run_remove_task(
         output::Output::Success(format!(
             "任务 {} 已从项目中移除",
             &full_task_id[..8.min(full_task_id.len())]
+        )),
+        json,
+    );
+    Ok(())
+}
+
+/// 在当前目录初始化 .pinchproject 文件。
+async fn run_init(store: &TaskStore, project_id: &str, force: bool, json: bool) -> Result<()> {
+    // 解析项目 ID
+    let projects = core::list_projects(store).await?;
+    let full_project_id = resolve_project_id(project_id, &projects)?;
+
+    let pinproject_path = std::env::current_dir()?.join(".pinchproject");
+
+    // 检查文件是否已存在
+    if pinproject_path.exists() && !force {
+        anyhow::bail!(
+            ".pinchproject 文件已存在: {}（使用 --force 覆盖）",
+            pinproject_path.display()
+        );
+    }
+
+    let written_path = core::write_pinproject_file(&pinproject_path, &full_project_id)
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    let short_id = &full_project_id[..8.min(full_project_id.len())];
+    output::print(
+        output::Output::Success(format!(
+            "已创建 .pinchproject: {} (项目 {})",
+            written_path.display(),
+            short_id
         )),
         json,
     );

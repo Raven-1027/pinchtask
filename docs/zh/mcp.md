@@ -100,16 +100,11 @@ pinchtask serve -D /path/to/data
 
 ## 工作区项目关联（.pinchproject）
 
-在 MCP 服务器启动目录（或其上级目录）放置 `.pinchproject` 文件，内容为项目 UUID。服务器启动时会自动解析该文件。
+在项目根目录放置 `.pinchproject` 文件（内容为项目 UUID）可实现工作区自动关联。
 
-当以下工具未显式指定 `project_id` 参数时，自动使用 `.pinchproject` 中的项目 ID：
+**MCP 层**：`new_task` 和 `list_tasks` 不再自动注入 workspace project_id，`project_id` 必须显式传入。
 
-- `new_task` — 自动关联到 `.pinchproject` 指定的项目
-- `list_tasks` — 自动按该项目过滤任务
-
-**优先级**：显式 `project_id` > `.pinchproject` > 无项目
-
-注意：MCP 服务器的 CWD 取决于 AI 客户端的启动配置。如果客户端从项目目录启动 pinchtask serve，则 `.pinchproject` 生效。
+**CLI 层**：`task new` 和 `task ls` 在未指定 `--project` 时仍支持自动使用 `.pinchproject` 中的项目 ID。详见 CLI 文档。
 
 ## 工具列表
 
@@ -127,7 +122,7 @@ pinchtask serve -D /path/to/data
 | `notes` | array of string | 否 | 初始笔记列表 |
 | `resources` | array | 否 | 初始资源引用列表 |
 | `metadata` | object | 否 | 任务元数据 |
-| `project_id` | string | 否 | 关联的项目 ID（支持短 ID 前缀匹配） |
+| `project_id` | string | 是 | 关联的项目 ID（支持短 ID 前缀匹配） |
 
 **`initial_checklist` 条目结构：**
 
@@ -237,7 +232,7 @@ pinchtask serve -D /path/to/data
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `action` | string | 是 | 操作类型：`add` / `update` / `reorder` / `remove` |
+| `action` | string | 是 | 操作类型：`add` / `update` / `reorder` / `remove` / `batch_update` |
 | `task_id` | string | 是 | 任务 ID（支持短 ID 前缀匹配） |
 | `task` | string | `add` 时必填 | 条目简短名称 |
 | `detailed_description` | string | `add` 时必填 | 详细描述 |
@@ -246,6 +241,7 @@ pinchtask serve -D /path/to/data
 | `to_index` | number | `reorder` 时必填 | 目标索引（0-based） |
 | `context_and_plan` | string or null | 否 | 上下文与计划。不传则不修改；传 `null` 则清空；传字符串则更新 |
 | `done` | boolean | 否 | 是否完成（仅 `update` 时有效） |
+| `updates` | array | `batch_update` 时必填 | 要批量更新的条目列表 |
 
 **各操作说明：**
 
@@ -253,6 +249,7 @@ pinchtask serve -D /path/to/data
 - **`update`** — 修改已有条目，需提供 `index`，仅修改指定字段
 - **`reorder`** — 移动条目位置，需提供 `from_index` 和 `to_index`。重排序后索引会变化，后续操作前需刷新任务数据
 - **`remove`** — 删除条目，需提供 `index`。删除后后续条目索引前移 1 位
+- **`batch_update`** — 在单次请求中更新多个条目。需提供 `updates` 数组，每个元素指定 `index` 和要修改的字段。条目按顺序依次更新。适用于批量标记完成等场景
 
 **添加条目示例：**
 
@@ -287,6 +284,30 @@ pinchtask serve -D /path/to/data
   "to_index": 0
 }
 ```
+
+**批量更新示例：**
+
+```json
+{
+  "action": "batch_update",
+  "task_id": "a1b2c3d4-...",
+  "updates": [
+    {"index": 0, "done": true},
+    {"index": 1, "done": true},
+    {"index": 2, "done": true}
+  ]
+}
+```
+
+**`updates` 条目结构：**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `index` | number | 是 | 条目索引（0-based） |
+| `task` | string | 否 | 新标题 |
+| `detailed_description` | string | 否 | 新描述 |
+| `context_and_plan` | string or null | 否 | 新上下文与计划（`null` 清空） |
+| `done` | boolean | 否 | 是否完成 |
 
 ---
 
@@ -382,25 +403,29 @@ pinchtask serve -D /path/to/data
 
 ### list_tasks
 
-列出所有任务，按创建时间排序。返回简洁摘要，不包含完整详情。提供 `project_id` 可筛选指定项目下的任务。
+列出任务并按状态分组返回。返回格式为：进行中 → 未开始 → 已完成，组内按优先级（high > medium > low）排序。当任务总数超过 10 时，未开始和已完成组自动截断，仅展示前 3 条并附统计摘要。可通过 `status_filter` 过滤指定状态组，或通过 `include_all` 强制展示全部任务。
 
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `project_id` | string | 否 | 按项目 ID 过滤任务，仅返回指定项目下的任务（支持短 ID 前缀匹配） |
+| `project_id` | string | 是 | 项目 ID（支持短 ID 前缀匹配），返回该项目的任务。传入 `"*"` 表示跨所有项目查询 |
+| `status_filter` | string | 否 | 按任务状态过滤：`"in_progress"` / `"not_started"` / `"completed"`。不传则显示全部状态 |
+| `include_all` | boolean | 否 | 为 `true` 时跳过截断逻辑（默认总数 >10 时截断未开始/已完成组），强制展示全部任务 |
 
-**示例：**
-
-```json
-{}
-```
-
-**按项目过滤示例：**
+**示例 — 查询指定项目：**
 
 ```json
 {
   "project_id": "e5f6a7b8-..."
+}
+```
+
+**示例 — 跨所有项目查询：**
+
+```json
+{
+  "project_id": "*"
 }
 ```
 

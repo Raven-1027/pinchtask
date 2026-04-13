@@ -83,11 +83,10 @@ pub struct InitializeTaskParams {
     #[schemars(description = "Optional metadata for the task")]
     pub metadata: Option<TaskMetadataInput>,
 
-    #[serde(default)]
     #[schemars(
-        description = "Optional project ID to associate the task with at creation time. Use manage_project (action: \"list\") to find available project IDs."
+        description = "Required. The ID of the project to associate the task with. Use manage_project (action: \"list\") to find available project IDs. Supports short ID prefix matching (minimum 4 characters of the UUID)."
     )]
-    pub project_id: Option<String>,
+    pub project_id: String,
 }
 
 /// `update_task` 参数（统一更新多个字段）。
@@ -131,6 +130,35 @@ pub enum Action {
     Reorder,
     /// Delete an item. After removal, subsequent indices shift down by 1.
     Remove,
+    /// Update multiple checklist items in a single request.
+    BatchUpdate,
+}
+
+/// Item-level update specification for batch_update action.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BatchUpdateItem {
+    /// 0-based index of the checklist item to update.
+    #[serde(default)]
+    #[schemars(description = "0-based index of the checklist item to update")]
+    pub index: u64,
+    /// New short name for the item (optional, omit to keep current).
+    #[serde(default)]
+    #[schemars(description = "New short name for the item (omit to keep current)")]
+    pub task: Option<String>,
+    /// New detailed description (optional, omit to keep current).
+    #[serde(default)]
+    #[schemars(description = "New detailed description (omit to keep current)")]
+    pub detailed_description: Option<String>,
+    /// New context and plan (optional, omit to keep current; pass null to clear).
+    #[serde(default)]
+    #[schemars(description = "New context and plan (omit to keep current; pass null to clear)")]
+    pub context_and_plan: Option<Option<String>>,
+    /// Whether the item is completed (optional, omit to keep current).
+    #[serde(default)]
+    #[schemars(
+        description = "Whether the item is completed (true=done, false=undone, omit to keep current)"
+    )]
+    pub done: Option<bool>,
 }
 
 /// `manage_checklist_item` 参数。
@@ -139,9 +167,9 @@ pub enum Action {
 /// `action` 是必填字段，其他字段根据 action 类型有不同含义。
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ManageChecklistItemParams {
-    /// The operation to perform. Must be one of: "add", "update", "reorder", "remove".
+    /// The operation to perform. Must be one of: "add", "update", "reorder", "remove", "batch_update".
     #[schemars(
-        description = "The operation to perform. Must be one of: \"add\", \"update\", \"reorder\", \"remove\""
+        description = "The operation to perform. Must be one of: \"add\", \"update\", \"reorder\", \"remove\", \"batch_update\""
     )]
     pub action: Action,
 
@@ -183,6 +211,14 @@ pub struct ManageChecklistItemParams {
         description = "Whether the item is completed (for Update only). true=done, false=undone"
     )]
     pub done: Option<bool>,
+
+    // --- BatchUpdate 专用 ---
+    /// For batch_update action: list of item updates to apply.
+    #[serde(default)]
+    #[schemars(
+        description = "For batch_update action: list of item updates to apply sequentially."
+    )]
+    pub updates: Option<Vec<BatchUpdateItem>>,
 }
 
 impl Default for ManageChecklistItemParams {
@@ -197,6 +233,7 @@ impl Default for ManageChecklistItemParams {
             to_index: None,
             context_and_plan: None,
             done: None,
+            updates: None,
         }
     }
 }
@@ -241,14 +278,25 @@ pub struct ClearTaskParams {
     pub task_id: String,
 }
 
-/// `list_tasks` 参数（无额外参数）。
+/// `list_tasks` 参数。
 #[derive(Debug, Deserialize, JsonSchema, Default)]
 pub struct ListTasksParams {
+    #[schemars(
+        description = "Required. The ID of the project to filter tasks by. Pass \"*\" to list tasks across all projects. Supports short ID prefix matching (minimum 4 characters of the UUID). When working within a project directory with a .pinchproject file, prefer using that project ID."
+    )]
+    pub project_id: String,
+
     #[serde(default)]
     #[schemars(
-        description = "Optional project ID to filter tasks by project. When provided, only tasks belonging to the specified project are returned."
+        description = "Optional status filter. Valid values: \"in_progress\", \"not_started\", \"completed\". When provided, only tasks matching this status are shown. If not provided, all statuses are shown."
     )]
-    pub project_id: Option<String>,
+    pub status_filter: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        description = "If true, show all tasks without truncation (overrides the default threshold of 10 total tasks). Useful when you need a complete view of all tasks."
+    )]
+    pub include_all: Option<bool>,
 }
 
 /// Action type for project operations.
@@ -607,10 +655,10 @@ mod tests {
             .and_then(|v| v.as_array())
             .expect("should have required array");
 
-        // 只有 task_description 是必填的
-        // 注意：project_id 是新增字段，也是可选的
-        assert_eq!(required.len(), 1);
+        // task_description 和 project_id 是必填的
+        assert_eq!(required.len(), 2);
         assert_eq!(required[0].as_str(), Some("task_description"));
+        assert_eq!(required[1].as_str(), Some("project_id"));
 
         // 确认 Option 字段确实不在 required 中
         let optional_fields = [
@@ -619,7 +667,6 @@ mod tests {
             "notes",
             "resources",
             "metadata",
-            "project_id",
         ];
         for field in &optional_fields {
             assert!(
